@@ -1,6 +1,16 @@
 import Foundation
 import SwiftUI
 import Combine
+import GitHTMLParser
+
+struct ProjectUpdate: Codable {
+    let projectId: String
+    let lastCommitSha: String
+    let lastCommitMessage: String
+    let lastCommitDate: Date
+    let hasNewCommits: Bool
+    let lastChecked: Date
+}
 
 @MainActor
 class StarredViewModel: ObservableObject {
@@ -13,15 +23,6 @@ class StarredViewModel: ObservableObject {
     private let updatesKey = "starredProjectUpdates"
     private let lastCheckedKey = "lastUpdateCheck"
     private let gitService = GitService.shared
-    
-    struct ProjectUpdate: Codable {
-        let projectId: String
-        let lastCommitSha: String
-        let lastCommitMessage: String
-        let lastCommitDate: Date
-        let hasNewCommits: Bool
-        let lastChecked: Date
-    }
     
     func loadStarredProjects() {
         if let data = userDefaults.data(forKey: starredKey),

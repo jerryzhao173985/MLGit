@@ -1,4 +1,6 @@
 import SwiftUI
+import GitHTMLParser
+import Combine
 
 struct SummaryView: View {
     let repositoryPath: String

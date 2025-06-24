@@ -231,28 +231,28 @@ class GitService: ObservableObject {
     }
     
     private func parseCommitDetail(from html: String, sha: String) throws -> CommitDetail {
-        let commitInfo = try commitDetailParser.parse(html: html)
+        let commitDetailInfo = try commitDetailParser.parse(html: html)
         
         return CommitDetail(
-            id: commitInfo.sha,
-            sha: commitInfo.sha,
-            message: commitInfo.message,
-            authorName: commitInfo.authorName,
-            authorEmail: commitInfo.authorEmail,
-            authorDate: commitInfo.authorDate,
-            committerName: commitInfo.committerName,
-            committerEmail: commitInfo.committerEmail,
-            committerDate: commitInfo.committerDate,
-            parents: commitInfo.parents,
-            tree: commitInfo.tree,
-            diffStats: commitInfo.diffStats.map { stats in
+            id: commitDetailInfo.sha,
+            sha: commitDetailInfo.sha,
+            message: commitDetailInfo.message,
+            authorName: commitDetailInfo.authorName,
+            authorEmail: commitDetailInfo.authorEmail,
+            authorDate: commitDetailInfo.authorDate,
+            committerName: commitDetailInfo.committerName,
+            committerEmail: commitDetailInfo.committerEmail,
+            committerDate: commitDetailInfo.committerDate,
+            parents: commitDetailInfo.parents,
+            tree: commitDetailInfo.tree,
+            diffStats: commitDetailInfo.diffStats.map { stats in
                 DiffStats(
                     filesChanged: stats.filesChanged,
                     insertions: stats.insertions,
                     deletions: stats.deletions
                 )
             },
-            changedFiles: commitInfo.changedFiles.map { file in
+            changedFiles: commitDetailInfo.changedFiles.map { file in
                 ChangedFile(
                     id: file.path,
                     path: file.path,
@@ -278,7 +278,7 @@ class GitService: ObservableObject {
         }
     }
     
-    private func mapChangeType(_ type: GitHTMLParser.ChangedFile.ChangeType) -> ChangedFile.ChangeType {
+    private func mapChangeType(_ type: GitHTMLParser.GitChangedFile.ChangeType) -> ChangedFile.ChangeType {
         switch type {
         case .added:
             return .added

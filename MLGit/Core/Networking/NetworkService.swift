@@ -52,7 +52,7 @@ class NetworkService: NetworkServiceProtocol {
         
         guard (200...299).contains(httpResponse.statusCode) else {
             print("NetworkService: HTTP error \(httpResponse.statusCode) for URL: \(url)")
-            throw NetworkError.httpError(statusCode: httpResponse.statusCode)
+            throw NetworkError.httpError(httpResponse.statusCode)
         }
         
         guard let html = String(data: data, encoding: .utf8) else {
@@ -84,7 +84,7 @@ class NetworkService: NetworkServiceProtocol {
         }
         
         guard (200...299).contains(httpResponse.statusCode) else {
-            throw NetworkError.httpError(statusCode: httpResponse.statusCode)
+            throw NetworkError.httpError(httpResponse.statusCode)
         }
         
         logger.debug("Successfully fetched data, size: \(data.count) bytes")
@@ -103,7 +103,7 @@ class NetworkService: NetworkServiceProtocol {
 enum NetworkError: LocalizedError {
     case invalidURL
     case invalidResponse
-    case httpError(statusCode: Int)
+    case httpError(Int)
     case decodingError
     case noData
     case parsingError(String)
@@ -114,8 +114,8 @@ enum NetworkError: LocalizedError {
             return "Invalid URL"
         case .invalidResponse:
             return "Invalid server response"
-        case .httpError(let statusCode):
-            return statusCode == 404 ? "Repository not found" : "HTTP error: \(statusCode)"
+        case .httpError(let code):
+            return code == 404 ? "Repository not found" : "HTTP error: \(code)"
         case .decodingError:
             return "Failed to decode response"
         case .noData:

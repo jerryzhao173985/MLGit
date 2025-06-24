@@ -62,7 +62,7 @@ struct ExploreView: View {
         } else if let error = viewModel.error {
             ErrorStateView(error: error) {
                 Task {
-                    await viewModel.fetchProjects()
+                    await viewModel.loadProjects()
                 }
             }
             .listRowSeparator(.hidden)
@@ -74,7 +74,7 @@ struct ExploreView: View {
                 actionTitle: "Refresh",
                 action: {
                     Task {
-                        await viewModel.fetchProjects()
+                        await viewModel.loadProjects()
                     }
                 }
             )

@@ -1,4 +1,5 @@
 import SwiftUI
+import GitHTMLParser
 
 extension View {
     func errorAlert(error: Binding<Error?>, retry: (() -> Void)? = nil) -> some View {
@@ -46,11 +47,6 @@ extension View {
         }
     }
     
-    func refreshable(action: @escaping () async -> Void) -> some View {
-        self.refreshable {
-            await action()
-        }
-    }
 }
 
 extension Error {
@@ -70,12 +66,12 @@ extension Error {
                 default:
                     return "Network error (code: \(code))"
                 }
-            case .decodingError(let message):
-                return "Failed to process server response: \(message)"
+            case .invalidResponse:
+                return "Invalid server response. Please try again."
+            case .decodingError:
+                return "Failed to process server response."
             case .parsingError(let message):
                 return "Failed to parse content: \(message)"
-            case .unknown:
-                return "An unexpected error occurred. Please try again."
             }
         } else if let parserError = self as? ParserError {
             switch parserError {

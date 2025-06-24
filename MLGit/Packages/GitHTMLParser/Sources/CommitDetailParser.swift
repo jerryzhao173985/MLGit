@@ -1,7 +1,7 @@
 import Foundation
 import SwiftSoup
 
-public struct CommitInfo {
+public struct CommitDetailInfo {
     public let sha: String
     public let message: String
     public let authorName: String
@@ -14,11 +14,11 @@ public struct CommitInfo {
     public let tree: String
     public let changeId: String?
     public let diffStats: DiffStats?
-    public let changedFiles: [ChangedFile]
+    public let changedFiles: [GitChangedFile]
     
     public init(sha: String, message: String, authorName: String, authorEmail: String?, authorDate: Date,
                 committerName: String?, committerEmail: String?, committerDate: Date?,
-                parents: [String], tree: String, changeId: String?, diffStats: DiffStats?, changedFiles: [ChangedFile]) {
+                parents: [String], tree: String, changeId: String?, diffStats: DiffStats?, changedFiles: [GitChangedFile]) {
         self.sha = sha
         self.message = message
         self.authorName = authorName
@@ -47,7 +47,7 @@ public struct DiffStats {
     }
 }
 
-public struct ChangedFile {
+public struct GitChangedFile {
     public let path: String
     public let changeType: ChangeType
     public let additions: Int
@@ -70,7 +70,7 @@ public struct ChangedFile {
 }
 
 public class CommitDetailParser: BaseParser, HTMLParserProtocol {
-    public typealias Output = CommitInfo
+    public typealias Output = CommitDetailInfo
     
     private let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -84,7 +84,7 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
         super.init()
     }
     
-    public func parse(html: String) throws -> CommitInfo {
+    public func parse(html: String) throws -> CommitDetailInfo {
         let doc = try parseDocument(html)
         
         // Extract commit info from the commit-info table
@@ -157,7 +157,7 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
         // Parse changed files
         let changedFiles = try parseChangedFiles(doc: doc)
         
-        return CommitInfo(
+        return CommitDetailInfo(
             sha: sha,
             message: message,
             authorName: authorName,
@@ -205,8 +205,8 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
         return nil
     }
     
-    private func parseChangedFiles(doc: Document) throws -> [ChangedFile] {
-        var files: [ChangedFile] = []
+    private func parseChangedFiles(doc: Document) throws -> [GitChangedFile] {
+        var files: [GitChangedFile] = []
         
         // Look for diffstat table
         if let diffstatTable = try doc.select("table.diffstat").first() {
@@ -228,7 +228,7 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
                     let statsText = try cells[2].text()
                     let (additions, deletions) = parseFileStats(statsText)
                     
-                    let file = ChangedFile(
+                    let file = GitChangedFile(
                         path: path,
                         changeType: changeType,
                         additions: additions,
@@ -242,7 +242,7 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
         return files
     }
     
-    private func parseChangeType(_ mode: String) -> ChangedFile.ChangeType {
+    private func parseChangeType(_ mode: String) -> GitChangedFile.ChangeType {
         if mode.contains("new") {
             return .added
         } else if mode.contains("deleted") {

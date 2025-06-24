@@ -1,4 +1,5 @@
 import SwiftUI
+import GitHTMLParser
 
 struct LoadingStateView: View {
     let title: String
@@ -133,16 +134,16 @@ struct ErrorStateView: View {
             switch networkError {
             case .invalidURL:
                 return "The requested URL is invalid."
+            case .invalidResponse:
+                return "Invalid server response."
             case .noData:
                 return "No data was received from the server."
             case .httpError(let code):
                 return "Server error: \(code)"
-            case .decodingError(let message):
-                return "Failed to decode response: \(message)"
+            case .decodingError:
+                return "Failed to decode response."
             case .parsingError(let message):
                 return "Failed to parse content: \(message)"
-            case .unknown:
-                return "An unknown error occurred."
             }
         } else if let parserError = error as? ParserError {
             switch parserError {
