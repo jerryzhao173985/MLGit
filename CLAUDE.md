@@ -96,10 +96,19 @@ If Xcode shows "Unable to find module dependency: 'GitHTMLParser'" errors:
 ### Recent Updates
 - Fixed UI freezing issues with proper alert binding using onReceive instead of onChange
 - Added network connectivity monitoring with NetworkMonitor class
-- Updated CatalogueParser to handle git.mlplatform.org HTML structure (both toplevel-repo and sublevel-repo)
+- Updated all parsers to handle cgit HTML structure properly:
+  - Tables use class='list nowrap' not just class='list'
+  - Main page has toplevel-repo and sublevel-repo classes
+  - Log pages don't have table.list.log, just table with class containing 'list'
 - Fixed BaseParser parseDocument method signature issues
 - Improved error handling with detailed logging and specific error messages
 - Added proper loading and empty states with better UI feedback
 - Fixed Settings view links to point to correct URLs
 - Fixed repeated network requests by adding loading state checks
 - Updated date parsing to handle formats like "45 min." and "3 years"
+
+### Important Notes
+- git.mlplatform.org uses cgit, not GitHub
+- There is NO star/favorite feature on the server - starring is local only
+- The app scrapes HTML, not using a REST API
+- Repository paths include .git extension (e.g., /ml/armnn.git/)

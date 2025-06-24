@@ -43,8 +43,12 @@ public class CommitListParser: BaseParser, HTMLParserProtocol {
     public func parse(html: String) throws -> CommitListResult {
         let doc = try parseDocument(html)
         
-        guard let table = try doc.select("table.list.log").first() else {
-            throw ParserError.missingElement(selector: "table.list.log")
+        // Look for table with class containing 'list'
+        let tables = try doc.select("table").array()
+        guard let table = tables.first(where: { element in
+            (try? element.className().contains("list")) ?? false
+        }) else {
+            throw ParserError.missingElement(selector: "table with class 'list'")
         }
         
         let rows = try table.select("tr").array()

@@ -44,7 +44,11 @@ public class RefsParser: BaseParser, HTMLParserProtocol {
     public func parse(html: String) throws -> RefsResult {
         let doc = try parseDocument(html)
         
-        let tables = try doc.select("table.list").array()
+        // Find all tables with class containing 'list'
+        let allTables = try doc.select("table").array()
+        let tables = allTables.filter { element in
+            (try? element.className().contains("list")) ?? false
+        }
         var branches: [RefInfo] = []
         var tags: [RefInfo] = []
         

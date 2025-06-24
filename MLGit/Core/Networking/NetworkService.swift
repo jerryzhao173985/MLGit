@@ -5,6 +5,8 @@ import os.log
 protocol NetworkServiceProtocol {
     func fetchHTML(from url: URL) async throws -> String
     func fetchData(from url: URL) async throws -> Data
+    func fetchHTML(from url: URL, useCache: Bool) async throws -> String
+    func fetchData(from url: URL, useCache: Bool) async throws -> Data
 }
 
 class NetworkService: NetworkServiceProtocol {
@@ -30,6 +32,16 @@ class NetworkService: NetworkServiceProtocol {
     }
     
     func fetchHTML(from url: URL) async throws -> String {
+        return try await fetchHTML(from: url, useCache: true)
+    }
+    
+    func fetchHTML(from url: URL, useCache: Bool) async throws -> String {
+        // Check cache first if enabled
+        if useCache, let cachedHTML = await CacheManager.shared.getCachedHTML(for: url) {
+            print("Using cached HTML for: \(url.absoluteString)")
+            return cachedHTML
+        }
+        
         print("Fetching HTML from: \(url.absoluteString)")
         
         let (data, response) = try await session.data(from: url)
@@ -48,10 +60,21 @@ class NetworkService: NetworkServiceProtocol {
         }
         
         print("Successfully fetched HTML, size: \(data.count) bytes")
+        
+        // Cache the response if caching is enabled
+        if useCache {
+            await CacheManager.shared.cacheHTML(html, for: url)
+        }
+        
         return html
     }
     
     func fetchData(from url: URL) async throws -> Data {
+        return try await fetchData(from: url, useCache: true)
+    }
+    
+    func fetchData(from url: URL, useCache: Bool) async throws -> Data {
+        // For binary data, we'll use URLCache instead of our custom cache
         logger.debug("Fetching data from: \(url.absoluteString)")
         
         let (data, response) = try await session.data(from: url)
@@ -70,6 +93,9 @@ class NetworkService: NetworkServiceProtocol {
     
     func clearCache() {
         cache.removeAllCachedResponses()
+        Task {
+            await CacheManager.shared.clearCache()
+        }
         logger.info("Cache cleared")
     }
 }

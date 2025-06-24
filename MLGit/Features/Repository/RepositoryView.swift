@@ -7,6 +7,34 @@ struct RepositoryView: View {
     @StateObject private var starredViewModel = StarredViewModel()
     @State private var selectedTab = 0
     
+    enum Tab: Int, CaseIterable {
+        case summary = 0
+        case about = 1
+        case code = 2
+        case commits = 3
+        case branches = 4
+        
+        var title: String {
+            switch self {
+            case .summary: return "Summary"
+            case .about: return "About"
+            case .code: return "Code"
+            case .commits: return "Commits"
+            case .branches: return "Branches"
+            }
+        }
+        
+        var icon: String {
+            switch self {
+            case .summary: return "info.circle"
+            case .about: return "doc.text"
+            case .code: return "doc.text.below.ecg"
+            case .commits: return "clock"
+            case .branches: return "arrow.triangle.branch"
+            }
+        }
+    }
+    
     init(repositoryPath: String) {
         self.repositoryPath = repositoryPath
         self._viewModel = StateObject(wrappedValue: RepositoryViewModel(repositoryPath: repositoryPath))
@@ -18,30 +46,44 @@ struct RepositoryView: View {
                 ProgressView("Loading repository...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let repository = viewModel.repository {
-                TabView(selection: $selectedTab) {
-                    AboutView(repository: repository)
-                        .tabItem {
-                            Label("About", systemImage: "doc.text")
+                VStack(spacing: 0) {
+                    // Custom tab bar
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 20) {
+                            ForEach(Tab.allCases, id: \.rawValue) { tab in
+                                TabButton(
+                                    title: tab.title,
+                                    icon: tab.icon,
+                                    isSelected: selectedTab == tab.rawValue,
+                                    action: { selectedTab = tab.rawValue }
+                                )
+                            }
                         }
-                        .tag(0)
+                        .padding(.horizontal)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color(UIColor.systemBackground))
                     
-                    CodeView(repositoryPath: repositoryPath)
-                        .tabItem {
-                            Label("Code", systemImage: "doc.text.below.ecg")
-                        }
-                        .tag(1)
+                    Divider()
                     
-                    CommitsView(repositoryPath: repositoryPath)
-                        .tabItem {
-                            Label("Commits", systemImage: "clock")
+                    // Tab content
+                    Group {
+                        switch Tab(rawValue: selectedTab) {
+                        case .summary:
+                            SummaryView(repositoryPath: repositoryPath)
+                        case .about:
+                            AboutView(repository: repository)
+                        case .code:
+                            CodeView(repositoryPath: repositoryPath)
+                        case .commits:
+                            CommitsView(repositoryPath: repositoryPath)
+                        case .branches:
+                            RefsView(repositoryPath: repositoryPath)
+                        case .none:
+                            EmptyView()
                         }
-                        .tag(2)
-                    
-                    RefsView(repositoryPath: repositoryPath)
-                        .tabItem {
-                            Label("Branches", systemImage: "arrow.triangle.branch")
-                        }
-                        .tag(3)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 .navigationTitle(repository.name)
                 .navigationBarTitleDisplayMode(.inline)
@@ -91,6 +133,32 @@ struct RepositoryView: View {
             category: nil
         )
         starredViewModel.toggleStarred(project)
+    }
+}
+
+struct TabButton: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                Text(title)
+                    .font(.caption)
+            }
+            .foregroundColor(isSelected ? .accentColor : .secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 

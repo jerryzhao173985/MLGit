@@ -43,6 +43,7 @@ struct ContentView: View {
         } message: {
             Text(appState.error?.localizedDescription ?? "An error occurred")
         }
+        .offlineModeIndicator()
     }
 }
 

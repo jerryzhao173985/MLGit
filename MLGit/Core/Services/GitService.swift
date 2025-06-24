@@ -11,6 +11,9 @@ class GitService: ObservableObject {
     private let commitListParser = CommitListParser()
     private let treeParser = TreeParser()
     private let refsParser = RefsParser()
+    private let commitDetailParser = CommitDetailParser()
+    private let diffParser = DiffParser()
+    private let summaryParser = SummaryParser()
     
     @Published var isLoading = false
     @Published var error: Error?
@@ -164,6 +167,34 @@ class GitService: ObservableObject {
         }
     }
     
+    func fetchRepositorySummary(repositoryPath: String) async throws -> RepositorySummary {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let url = URLBuilder.repository(path: repositoryPath)
+            let html = try await networkService.fetchHTML(from: url)
+            return try summaryParser.parse(html: html)
+        } catch {
+            self.error = error
+            throw error
+        }
+    }
+    
+    func fetchDiff(repositoryPath: String, sha: String) async throws -> [DiffFile] {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let url = URLBuilder.diff(repositoryPath: repositoryPath, sha: sha)
+            let html = try await networkService.fetchHTML(from: url)
+            return try diffParser.parse(html: html)
+        } catch {
+            self.error = error
+            throw error
+        }
+    }
+    
     func fetchFileContent(repositoryPath: String, path: String, sha: String? = nil) async throws -> FileContent {
         isLoading = true
         defer { isLoading = false }
@@ -200,20 +231,37 @@ class GitService: ObservableObject {
     }
     
     private func parseCommitDetail(from html: String, sha: String) throws -> CommitDetail {
+        let commitInfo = try commitDetailParser.parse(html: html)
+        
         return CommitDetail(
-            id: sha,
-            sha: sha,
-            message: "Commit message parsing not yet implemented",
-            authorName: "Author",
-            authorEmail: nil,
-            authorDate: Date(),
-            committerName: nil,
-            committerEmail: nil,
-            committerDate: nil,
-            parents: [],
-            tree: "",
-            diffStats: nil,
-            changedFiles: []
+            id: commitInfo.sha,
+            sha: commitInfo.sha,
+            message: commitInfo.message,
+            authorName: commitInfo.authorName,
+            authorEmail: commitInfo.authorEmail,
+            authorDate: commitInfo.authorDate,
+            committerName: commitInfo.committerName,
+            committerEmail: commitInfo.committerEmail,
+            committerDate: commitInfo.committerDate,
+            parents: commitInfo.parents,
+            tree: commitInfo.tree,
+            diffStats: commitInfo.diffStats.map { stats in
+                DiffStats(
+                    filesChanged: stats.filesChanged,
+                    insertions: stats.insertions,
+                    deletions: stats.deletions
+                )
+            },
+            changedFiles: commitInfo.changedFiles.map { file in
+                ChangedFile(
+                    id: file.path,
+                    path: file.path,
+                    oldPath: nil,
+                    changeType: mapChangeType(file.changeType),
+                    additions: file.additions,
+                    deletions: file.deletions
+                )
+            }
         )
     }
     
@@ -227,6 +275,21 @@ class GitService: ObservableObject {
             return .symlink
         case .submodule:
             return .submodule
+        }
+    }
+    
+    private func mapChangeType(_ type: GitHTMLParser.ChangedFile.ChangeType) -> ChangedFile.ChangeType {
+        switch type {
+        case .added:
+            return .added
+        case .modified:
+            return .modified
+        case .deleted:
+            return .deleted
+        case .renamed:
+            return .renamed
+        case .copied:
+            return .copied
         }
     }
 }

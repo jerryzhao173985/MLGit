@@ -27,8 +27,12 @@ public class CatalogueParser: BaseParser, HTMLParserProtocol {
     public func parse(html: String) throws -> [ProjectInfo] {
         let doc = try parseDocument(html)
         
-        guard let table = try doc.select("table.list").first() else {
-            throw ParserError.missingElement(selector: "table.list")
+        // Look for table with class containing 'list'
+        let tables = try doc.select("table").array()
+        guard let table = tables.first(where: { element in
+            (try? element.className().contains("list")) ?? false
+        }) else {
+            throw ParserError.missingElement(selector: "table with class 'list'")
         }
         
         let rows = try table.select("tr").array()

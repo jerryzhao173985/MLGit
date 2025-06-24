@@ -54,56 +54,43 @@ struct ExploreView: View {
     @ViewBuilder
     private var listContent: some View {
         if !networkMonitor.isConnected {
-            noConnectionView
+            NoConnectionView()
+                .listRowSeparator(.hidden)
         } else if viewModel.isLoading && viewModel.projects.isEmpty {
-            loadingView
+            LoadingSkeletonView()
+                .listRowSeparator(.hidden)
+        } else if let error = viewModel.error {
+            ErrorStateView(error: error) {
+                Task {
+                    await viewModel.fetchProjects()
+                }
+            }
+            .listRowSeparator(.hidden)
         } else if viewModel.projects.isEmpty && !viewModel.isLoading {
-            emptyStateView
+            EmptyStateView(
+                icon: "folder",
+                title: "No Repositories Found",
+                message: "No repositories are available at this time.",
+                actionTitle: "Refresh",
+                action: {
+                    Task {
+                        await viewModel.fetchProjects()
+                    }
+                }
+            )
+            .listRowSeparator(.hidden)
         } else {
             projectsList
         }
     }
     
-    private var noConnectionView: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "wifi.exclamationmark")
-                .foregroundColor(.orange)
-            Text("No internet connection")
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .listRowSeparator(.hidden)
-        .padding(.vertical)
-    }
-    
-    private var loadingView: some View {
-        ProgressView("Loading projects...")
-            .frame(maxWidth: .infinity, alignment: .center)
-            .listRowSeparator(.hidden)
-    }
-    
-    private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "folder")
-                .font(.largeTitle)
-                .foregroundColor(.secondary)
-            Text("No projects found")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            Text("Pull to refresh")
-                .font(.caption)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .listRowSeparator(.hidden)
-        .padding(.vertical)
-    }
     
     private var projectsList: some View {
         ForEach(filteredProjects) { project in
             NavigationLink(destination: RepositoryView(repositoryPath: project.path)) {
                 ProjectRowView(project: project)
             }
+            .disabled(viewModel.isLoading)
         }
     }
     

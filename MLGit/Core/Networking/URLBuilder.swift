@@ -72,4 +72,12 @@ struct URLBuilder {
         
         return URL(string: urlString)!
     }
+    
+    static func diff(repositoryPath: String, sha: String) -> URL {
+        URL(string: "\(baseURL)/\(repositoryPath)/diff/?id=\(sha)")!
+    }
+    
+    static func summary(repositoryPath: String) -> URL {
+        URL(string: "\(baseURL)/\(repositoryPath)/")!
+    }
 }
