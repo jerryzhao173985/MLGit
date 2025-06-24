@@ -6,13 +6,31 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C408E93F2E0AF876008226AE /* GitHTMLParser in Frameworks */ = {isa = PBXBuildFile; productRef = C408E93E2E0AF876008226AE /* GitHTMLParser */; };
+		C408E9422E0AF892008226AE /* GitDiffUI in Frameworks */ = {isa = PBXBuildFile; productRef = C408E9412E0AF892008226AE /* GitDiffUI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		C413C4422E0AE53800FAAC69 /* MLGit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MLGit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C4640A112E0AE9DD00D57415 /* Exceptions for "MLGit" folder in "MLGit" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C413C4412E0AE53800FAAC69 /* MLGit */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		C413C4442E0AE53800FAAC69 /* MLGit */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C4640A112E0AE9DD00D57415 /* Exceptions for "MLGit" folder in "MLGit" target */,
+			);
 			path = MLGit;
 			sourceTree = "<group>";
 		};
@@ -23,6 +41,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C408E9422E0AF892008226AE /* GitDiffUI in Frameworks */,
+				C408E93F2E0AF876008226AE /* GitHTMLParser in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +85,8 @@
 			);
 			name = MLGit;
 			packageProductDependencies = (
+				C408E93E2E0AF876008226AE /* GitHTMLParser */,
+				C408E9412E0AF892008226AE /* GitDiffUI */,
 			);
 			productName = MLGit;
 			productReference = C413C4422E0AE53800FAAC69 /* MLGit.app */;
@@ -94,6 +116,10 @@
 			);
 			mainGroup = C413C4392E0AE53800FAAC69;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C408E93D2E0AF876008226AE /* XCLocalSwiftPackageReference "MLGit/Packages/GitHTMLParser" */,
+				C408E9402E0AF892008226AE /* XCLocalSwiftPackageReference "MLGit/Packages/GitDiffUI" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C413C4432E0AE53800FAAC69 /* Products */;
 			projectDirPath = "";
@@ -178,6 +204,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = MLGit/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -186,6 +213,7 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SYSTEM_FRAMEWORK_SEARCH_PATHS = "";
 			};
 			name = Debug;
 		};
@@ -236,12 +264,14 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_FILE = MLGit/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
+				SYSTEM_FRAMEWORK_SEARCH_PATHS = "";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -273,6 +303,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				SYSTEM_FRAMEWORK_SEARCH_PATHS = "";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -304,6 +335,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
+				SYSTEM_FRAMEWORK_SEARCH_PATHS = "";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -330,6 +362,28 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C408E93D2E0AF876008226AE /* XCLocalSwiftPackageReference "MLGit/Packages/GitHTMLParser" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = MLGit/Packages/GitHTMLParser;
+		};
+		C408E9402E0AF892008226AE /* XCLocalSwiftPackageReference "MLGit/Packages/GitDiffUI" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = MLGit/Packages/GitDiffUI;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C408E93E2E0AF876008226AE /* GitHTMLParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GitHTMLParser;
+		};
+		C408E9412E0AF892008226AE /* GitDiffUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GitDiffUI;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C413C43A2E0AE53800FAAC69 /* Project object */;
 }

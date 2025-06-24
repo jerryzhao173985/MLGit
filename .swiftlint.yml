@@ -1,0 +1,44 @@
+disabled_rules:
+  - trailing_whitespace
+  - line_length
+  - file_length
+  - type_body_length
+  - function_body_length
+  
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - contains_over_first_not_nil
+  - discouraged_object_literal
+  - empty_string
+  - first_where
+  - force_unwrapping
+  - implicit_return
+  - implicitly_unwrapped_optional
+  - last_where
+  - legacy_multiple
+  - multiline_parameters
+  - multiline_function_chains
+  - prefer_zero_over_explicit_init
+  - sorted_first_last
+  - trailing_closure
+  - unneeded_parentheses_in_closure_argument
+  - vertical_parameter_alignment_on_call
+  - yoda_condition
+
+included:
+  - MLGit
+
+excluded:
+  - MLGit/Packages/*/Tests
+  - MLGit/Tests
+  - MLGit.xcodeproj
+  - .build
+
+identifier_name:
+  min_length: 1
+  max_length: 60
+
+type_name:
+  min_length: 3
+  max_length: 50
