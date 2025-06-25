@@ -199,14 +199,28 @@ class SummaryViewModel: ObservableObject {
     }
     
     func loadSummary() async {
-        guard !isLoading else { return }
+        // Prevent multiple simultaneous loads
+        guard !isLoading else {
+            print("SummaryViewModel: Already loading, skipping duplicate request")
+            return
+        }
+        
+        // Don't reload if we already have data
+        if summary != nil {
+            print("SummaryViewModel: Summary already loaded, skipping")
+            return
+        }
         
         isLoading = true
         error = nil
         
+        print("SummaryViewModel: Loading summary for \(repositoryPath)")
+        
         do {
             summary = try await gitService.fetchRepositorySummary(repositoryPath: repositoryPath)
+            print("SummaryViewModel: Successfully loaded summary")
         } catch {
+            print("SummaryViewModel: Failed to load summary - \(error)")
             self.error = error
         }
         

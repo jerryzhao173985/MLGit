@@ -111,41 +111,74 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
             let label = try th.text().lowercased()
             
             switch label {
-            case "commit":
-                sha = try td.select("a").first()?.text() ?? ""
             case "author":
+                // Author cell contains name and email
                 let authorText = try td.text()
                 (authorName, authorEmail) = parseNameEmail(authorText)
+                
+                // Date is in the second td with class 'right'
                 if let dateCell = try row.select("td.right").first() {
-                    authorDate = parseDate(try dateCell.text()) ?? Date()
+                    let dateText = try dateCell.text()
+                    authorDate = parseDate(dateText) ?? Date()
                 }
+                
             case "committer":
                 let committerText = try td.text()
                 (committerName, committerEmail) = parseNameEmail(committerText)
+                
                 if let dateCell = try row.select("td.right").first() {
-                    committerDate = parseDate(try dateCell.text())
+                    let dateText = try dateCell.text()
+                    committerDate = parseDate(dateText)
                 }
+                
+            case "commit":
+                // Extract SHA from the link
+                if let shaLink = try td.select("a").first() {
+                    sha = try shaLink.text()
+                } else {
+                    // Sometimes SHA is in the td.oid directly
+                    sha = try td.text()
+                }
+                
             case "parent":
                 if let parentLink = try td.select("a").first() {
-                    parents.append(try parentLink.text())
+                    let parentSha = try parentLink.text()
+                    parents.append(parentSha)
                 }
+                
             case "tree":
-                tree = try td.select("a").first()?.text() ?? ""
+                if let treeLink = try td.select("a").first() {
+                    tree = try treeLink.text()
+                } else {
+                    tree = try td.text()
+                }
+                
             default:
                 break
             }
         }
         
         // Extract commit message
-        let message = try doc.select("div.commit-msg").first()?.text() ?? ""
+        let messageElement = try doc.select("div.commit-subject").first()
+        let message = try messageElement?.text() ?? ""
+        
+        // Extract full commit message including body
+        var fullMessage = message
+        if let msgBody = try doc.select("div.commit-msg").first() {
+            let bodyText = try msgBody.text()
+            if !bodyText.isEmpty && bodyText != message {
+                fullMessage = bodyText
+            }
+        }
         
         // Extract Change-Id if present
         var changeId: String?
-        if message.contains("Change-Id:") {
-            let lines = message.components(separatedBy: "\n")
+        if fullMessage.contains("Change-Id:") {
+            let lines = fullMessage.components(separatedBy: "\n")
             for line in lines {
                 if line.hasPrefix("Change-Id:") {
-                    changeId = line.replacingOccurrences(of: "Change-Id:", with: "").trimmingCharacters(in: .whitespaces)
+                    changeId = line.replacingOccurrences(of: "Change-Id:", with: "")
+                        .trimmingCharacters(in: .whitespaces)
                     break
                 }
             }
@@ -159,7 +192,7 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
         
         return CommitDetailInfo(
             sha: sha,
-            message: message,
+            message: fullMessage,
             authorName: authorName,
             authorEmail: authorEmail,
             authorDate: authorDate,
@@ -191,17 +224,54 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
     }
     
     private func parseDiffStats(doc: Document) throws -> DiffStats? {
-        // Look for diffstat summary
+        // Look for diffstat-summary div
         if let diffstatSummary = try doc.select("div.diffstat-summary").first() {
             let text = try diffstatSummary.text()
-            // Parse "X files changed, Y insertions, Z deletions"
-            let numbers = text.components(separatedBy: CharacterSet.decimalDigits.inverted)
-                .compactMap { Int($0) }
             
-            if numbers.count >= 3 {
-                return DiffStats(filesChanged: numbers[0], insertions: numbers[1], deletions: numbers[2])
+            // Parse "X files changed, Y insertions, Z deletions"
+            var filesChanged = 0
+            var insertions = 0
+            var deletions = 0
+            
+            // Extract files changed
+            if let filesMatch = text.range(of: #"(\d+)\s+files?\s+changed"#, options: .regularExpression) {
+                let filesText = String(text[filesMatch])
+                let numbers = filesText.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                    .compactMap { Int($0) }
+                if let firstNumber = numbers.first {
+                    filesChanged = firstNumber
+                }
+            }
+            
+            // Extract insertions
+            if let insertMatch = text.range(of: #"(\d+)\s+insertions?"#, options: .regularExpression) {
+                let insertText = String(text[insertMatch])
+                let numbers = insertText.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                    .compactMap { Int($0) }
+                if let firstNumber = numbers.first {
+                    insertions = firstNumber
+                }
+            }
+            
+            // Extract deletions
+            if let deleteMatch = text.range(of: #"(\d+)\s+deletions?"#, options: .regularExpression) {
+                let deleteText = String(text[deleteMatch])
+                let numbers = deleteText.components(separatedBy: CharacterSet.decimalDigits.inverted)
+                    .compactMap { Int($0) }
+                if let firstNumber = numbers.first {
+                    deletions = firstNumber
+                }
+            }
+            
+            if filesChanged > 0 {
+                return DiffStats(
+                    filesChanged: filesChanged,
+                    insertions: insertions,
+                    deletions: deletions
+                )
             }
         }
+        
         return nil
     }
     
@@ -214,25 +284,32 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
             
             for row in rows {
                 let cells = try row.select("td").array()
+                
+                // Expected structure: mode | filename | stats | graph
                 guard cells.count >= 3 else { continue }
                 
-                // First cell has the mode/change type
-                let modeText = try cells[0].text()
+                // Mode cell (e.g., "-rw-r--r--")
+                let modeCell = cells[0]
+                let modeText = try modeCell.text()
                 let changeType = parseChangeType(modeText)
                 
-                // Second cell has the file path
-                if let fileLink = try cells[1].select("a").first() {
+                // Filename cell with update class
+                let filenameCell = cells[1]
+                if let fileLink = try filenameCell.select("a").first() {
                     let path = try fileLink.text()
                     
-                    // Third cell has the stats
-                    let statsText = try cells[2].text()
-                    let (additions, deletions) = parseFileStats(statsText)
+                    // Stats cell (e.g., "12" for total lines changed)
+                    let statsCell = cells[2]
+                    let statsText = try statsCell.text()
+                    let totalChanges = Int(statsText) ?? 0
                     
+                    // For cgit, we don't get separate add/delete counts in the table
+                    // We'd need to parse the actual diff for that
                     let file = GitChangedFile(
                         path: path,
                         changeType: changeType,
-                        additions: additions,
-                        deletions: deletions
+                        additions: totalChanges, // Approximation
+                        deletions: 0
                     )
                     files.append(file)
                 }
@@ -243,24 +320,17 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
     }
     
     private func parseChangeType(_ mode: String) -> GitChangedFile.ChangeType {
-        if mode.contains("new") {
+        // cgit uses mode strings or classes to indicate file status
+        if mode.contains("new") || mode == "new" {
             return .added
-        } else if mode.contains("deleted") {
+        } else if mode.contains("del") || mode == "deleted" {
             return .deleted
-        } else if mode.contains("renamed") {
+        } else if mode.contains("rename") {
             return .renamed
+        } else if mode.contains("copy") {
+            return .copied
         } else {
             return .modified
         }
-    }
-    
-    private func parseFileStats(_ text: String) -> (additions: Int, deletions: Int) {
-        let numbers = text.components(separatedBy: CharacterSet.decimalDigits.inverted)
-            .compactMap { Int($0) }
-        
-        if numbers.count >= 2 {
-            return (numbers[0], numbers[1])
-        }
-        return (0, 0)
     }
 }

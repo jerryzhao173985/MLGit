@@ -38,6 +38,7 @@ struct RepositoryView: View {
     init(repositoryPath: String) {
         self.repositoryPath = repositoryPath
         self._viewModel = StateObject(wrappedValue: RepositoryViewModel(repositoryPath: repositoryPath))
+        print("RepositoryView: Initialized with path: \(repositoryPath)")
     }
     
     var body: some View {
@@ -45,7 +46,11 @@ struct RepositoryView: View {
             if viewModel.isLoading && viewModel.repository == nil {
                 ProgressView("Loading repository...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        print("RepositoryView: Showing loading state")
+                    }
             } else if let repository = viewModel.repository {
+                let _ = print("RepositoryView: Showing repository content for: \(repository.name)")
                 VStack(spacing: 0) {
                     // Custom tab bar
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -66,13 +71,13 @@ struct RepositoryView: View {
                     
                     Divider()
                     
-                    // Tab content
+                    // Tab content with lazy loading - only render current tab
                     Group {
                         switch Tab(rawValue: selectedTab) {
                         case .summary:
                             SummaryView(repositoryPath: repositoryPath)
                         case .about:
-                            AboutView(repository: repository)
+                            AboutView(repositoryPath: repositoryPath)
                         case .code:
                             CodeView(repositoryPath: repositoryPath)
                         case .commits:
@@ -95,6 +100,12 @@ struct RepositoryView: View {
                         }
                     }
                 }
+            } else {
+                // No loading and no repository
+                let _ = print("RepositoryView: No loading and no repository - blank state")
+                Text("No repository data")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .task {

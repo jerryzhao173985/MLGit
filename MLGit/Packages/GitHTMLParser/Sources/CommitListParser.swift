@@ -9,8 +9,9 @@ public struct CommitInfo {
     public let authorName: String
     public let authorEmail: String?
     public let date: Date
+    public let decorations: [String] // Branch/tag decorations
     
-    public init(sha: String, message: String, authorName: String, authorEmail: String?, date: Date) {
+    public init(sha: String, message: String, authorName: String, authorEmail: String?, date: Date, decorations: [String] = []) {
         self.sha = sha
         self.shortSHA = String(sha.prefix(7))
         self.message = message
@@ -18,6 +19,7 @@ public struct CommitInfo {
         self.authorName = authorName
         self.authorEmail = authorEmail
         self.date = date
+        self.decorations = decorations
     }
 }
 
@@ -43,58 +45,59 @@ public class CommitListParser: BaseParser, HTMLParserProtocol {
     public func parse(html: String) throws -> CommitListResult {
         let doc = try parseDocument(html)
         
-        // Look for table with class containing 'list'
-        let tables = try doc.select("table").array()
-        guard let table = tables.first(where: { element in
-            (try? element.className().contains("list")) ?? false
-        }) else {
-            throw ParserError.missingElement(selector: "table with class 'list'")
+        // Look for table with class 'list nowrap'
+        let tables = try doc.select("table.list.nowrap").array()
+        guard let table = tables.first else {
+            throw ParserError.missingElement(selector: "table.list.nowrap")
         }
         
         let rows = try table.select("tr").array()
         var commits: [CommitInfo] = []
         
-        for (index, row) in rows.enumerated() {
-            if index == 0 { continue }
+        for row in rows {
+            // Skip header row
+            if try row.hasClass("nohover") && row.select("th").count > 0 {
+                continue
+            }
             
             let cells = try row.select("td").array()
+            
+            // Expected structure: Age | Commit message | Author
             guard cells.count >= 3 else { continue }
             
             let ageCell = cells[0]
-            let commitCell = cells[1]
+            let messageCell = cells[1]
             let authorCell = cells[2]
             
-            guard let commitLink = try commitCell.select("a").first() else {
-                continue
-            }
-            let href = try commitLink.attr("href")
-            guard let sha = extractSHA(from: href) else {
-                continue
-            }
+            // Extract date from age cell
+            let date = try extractDateFromAgeCell(ageCell) ?? Date()
             
-            let message = try commitLink.text()
+            // Extract commit message and SHA
+            guard let messageLink = try messageCell.select("a").first() else { continue }
+            let message = try messageLink.text()
+            let href = try messageLink.attr("href")
+            let sha = extractSHA(from: href)
             
-            let authorText = try authorCell.text()
-            let (authorName, authorEmail) = parseAuthor(from: authorText)
+            // Extract decorations (branches/tags)
+            let decorations = try extractDecorations(from: messageCell)
             
-            let ageText = try ageCell.text()
-            guard let date = parseDate(from: ageText) else {
-                continue
-            }
+            // Extract author
+            let authorName = try authorCell.text()
             
             let commit = CommitInfo(
                 sha: sha,
                 message: message,
                 authorName: authorName,
-                authorEmail: authorEmail,
-                date: date
+                authorEmail: nil, // cgit log doesn't show email
+                date: date,
+                decorations: decorations
             )
             
             commits.append(commit)
         }
         
-        let hasMore = try doc.select("a:contains(next)").first() != nil
-        let nextOffset = extractNextOffset(from: html)
+        // Check for pagination
+        let (hasMore, nextOffset) = try extractPagination(doc: doc)
         
         return CommitListResult(
             commits: commits,
@@ -103,31 +106,84 @@ public class CommitListParser: BaseParser, HTMLParserProtocol {
         )
     }
     
-    private func extractSHA(from href: String) -> String? {
-        if let range = href.range(of: "id=") {
-            let sha = String(href[range.upperBound...])
-            return sha.isEmpty ? nil : sha
+    private func extractDateFromAgeCell(_ cell: Element) throws -> Date? {
+        // Check for span with age class and title attribute
+        if let span = try? cell.select("span[class^=age]").first(),
+           let dateStr = try? span.attr("title") {
+            // Date format: "2025-06-23 10:46:03 +0000"
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            return formatter.date(from: dateStr)
         }
+        
+        // Fallback: try to parse the text directly if it's a date
+        let text = try cell.text()
+        if text.contains("-") {
+            // Try parsing as date string
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            return formatter.date(from: text)
+        }
+        
         return nil
     }
     
-    private func parseAuthor(from text: String) -> (name: String, email: String?) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        if let emailStart = trimmed.firstIndex(of: "<"),
-           let emailEnd = trimmed.firstIndex(of: ">") {
-            let name = String(trimmed[..<emailStart]).trimmingCharacters(in: .whitespaces)
-            let email = String(trimmed[trimmed.index(after: emailStart)..<emailEnd])
-            return (name, email)
+    private func extractSHA(from href: String) -> String {
+        // href format: "/tosa/reference_model.git/commit/?id=SHA"
+        if let idRange = href.range(of: "id=") {
+            let sha = String(href[href.index(idRange.upperBound, offsetBy: 0)...])
+            if let ampIndex = sha.firstIndex(of: "&") {
+                return String(sha[..<ampIndex])
+            }
+            return sha
         }
-        
-        return (trimmed, nil)
+        return ""
     }
     
-    private func extractNextOffset(from html: String) -> Int? {
-        guard let range = html.range(of: "ofs=") else { return nil }
-        let afterOfs = String(html[range.upperBound...])
-        let numberString = afterOfs.prefix(while: { $0.isNumber })
-        return Int(numberString)
+    private func extractDecorations(from cell: Element) throws -> [String] {
+        var decorations: [String] = []
+        
+        // Look for decoration spans
+        let decorationSpans = try cell.select("span.decoration").array()
+        for span in decorationSpans {
+            // Extract text from decoration links
+            let decoLinks = try span.select("a").array()
+            for link in decoLinks {
+                let text = try link.text()
+                if !text.isEmpty {
+                    decorations.append(text)
+                }
+            }
+        }
+        
+        return decorations
+    }
+    
+    private func extractPagination(doc: Document) throws -> (hasMore: Bool, nextOffset: Int?) {
+        // Look for "[...]" link or pagination links
+        let links = try doc.select("a").array()
+        
+        for link in links {
+            let text = try link.text()
+            let href = try link.attr("href")
+            
+            // Check for "next" or "[...]" links
+            if text.contains("[...]") || text.lowercased().contains("next") {
+                // Extract offset from href
+                if let ofsRange = href.range(of: "ofs=") {
+                    let offsetStr = String(href[href.index(ofsRange.upperBound, offsetBy: 0)...])
+                    let numberPart = offsetStr.prefix(while: { $0.isNumber })
+                    if let offset = Int(numberPart) {
+                        return (true, offset)
+                    }
+                }
+                return (true, nil)
+            }
+        }
+        
+        return (false, nil)
     }
 }

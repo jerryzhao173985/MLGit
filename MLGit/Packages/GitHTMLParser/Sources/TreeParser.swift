@@ -34,36 +34,45 @@ public class TreeParser: BaseParser, HTMLParserProtocol {
     public func parse(html: String) throws -> [TreeNode] {
         let doc = try parseDocument(html)
         
-        // Look for table with class containing 'list'
-        let tables = try doc.select("table").array()
-        guard let table = tables.first(where: { element in
-            (try? element.className().contains("list")) ?? false
-        }) else {
-            throw ParserError.missingElement(selector: "table with class 'list'")
+        // Look for table with class 'list' (without nowrap for tree view)
+        let tables = try doc.select("table.list").array()
+        guard let table = tables.first else {
+            throw ParserError.missingElement(selector: "table.list")
         }
         
         let rows = try table.select("tr").array()
         var nodes: [TreeNode] = []
         
-        for (index, row) in rows.enumerated() {
-            if index == 0 { continue }
+        for row in rows {
+            // Skip header row (has class 'nohover' and contains th elements)
+            if try row.hasClass("nohover") && row.select("th").count > 0 {
+                continue
+            }
             
             let cells = try row.select("td").array()
+            
+            // Expected structure: Mode | Name | Size | Actions
             guard cells.count >= 3 else { continue }
             
             let modeCell = cells[0]
             let nameCell = cells[1]
             let sizeCell = cells[2]
             
+            // Extract mode (e.g., "-rw-r--r--", "d---------")
             let mode = try modeCell.text().trimmingCharacters(in: .whitespacesAndNewlines)
             
+            // Extract name and href from link
             guard let link = try nameCell.select("a").first() else { continue }
             let name = try link.text()
             let href = try link.attr("href")
             
-            let nodeType = determineNodeType(from: mode, href: href)
-            let path = extractPath(from: href) ?? name
+            // Determine node type from link classes and href
+            let nodeType = try determineNodeType(from: link, mode: mode, href: href)
             
+            // Extract path from name (for files in subdirectories)
+            let path = name
+            
+            // Extract size
             let sizeText = try sizeCell.text().trimmingCharacters(in: .whitespacesAndNewlines)
             let size = parseSize(from: sizeText)
             
@@ -71,7 +80,7 @@ public class TreeParser: BaseParser, HTMLParserProtocol {
                 name: name,
                 path: path,
                 type: nodeType,
-                mode: mode.isEmpty ? nil : mode,
+                mode: mode.isEmpty || mode == "-" ? nil : mode,
                 size: size
             )
             
@@ -81,46 +90,62 @@ public class TreeParser: BaseParser, HTMLParserProtocol {
         return nodes
     }
     
-    private func determineNodeType(from mode: String, href: String) -> TreeNode.NodeType {
-        if mode.hasPrefix("d") || href.contains("/tree/") {
+    private func determineNodeType(from link: Element, mode: String, href: String) throws -> TreeNode.NodeType {
+        // Check link classes first
+        let classes = try link.className()
+        
+        if classes.contains("ls-dir") {
+            return .directory
+        } else if classes.contains("ls-blob") {
+            return .file
+        }
+        
+        // Fallback to mode-based detection
+        if mode.hasPrefix("d") {
             return .directory
         } else if mode.hasPrefix("l") {
             return .symlink
-        } else if mode.hasPrefix("m") || href.contains("submodule") {
+        } else if mode.hasPrefix("m") {
             return .submodule
-        } else {
-            return .file
         }
-    }
-    
-    private func extractPath(from href: String) -> String? {
-        if let range = href.range(of: "path=") {
-            let path = String(href[range.upperBound...])
-            if let ampRange = path.firstIndex(of: "&") {
-                return String(path[..<ampRange])
-            }
-            return path
+        
+        // Check href as last resort
+        if href.contains("/tree/") && !href.contains("?") {
+            return .directory
         }
-        return nil
+        
+        return .file
     }
     
     private func parseSize(from text: String) -> Int64? {
+        // Clean the text
         let cleanText = text.replacingOccurrences(of: ",", with: "")
             .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         
+        // Empty or non-numeric for directories
+        if cleanText.isEmpty || cleanText == "-" {
+            return nil
+        }
+        
+        // Try to parse as bytes
         if let bytes = Int64(cleanText) {
             return bytes
         }
         
+        // Handle size with units (K, M, G)
         let multipliers: [String: Int64] = [
             "K": 1024,
+            "KB": 1024,
             "M": 1024 * 1024,
-            "G": 1024 * 1024 * 1024
+            "MB": 1024 * 1024,
+            "G": 1024 * 1024 * 1024,
+            "GB": 1024 * 1024 * 1024
         ]
         
         for (suffix, multiplier) in multipliers {
-            if cleanText.hasSuffix(suffix) {
-                let numberPart = cleanText.dropLast()
+            if cleanText.uppercased().hasSuffix(suffix) {
+                let numberPart = String(cleanText.dropLast(suffix.count))
                 if let value = Double(numberPart) {
                     return Int64(value * Double(multiplier))
                 }

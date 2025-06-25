@@ -55,60 +55,63 @@ public struct CommitSummaryInfo {
 public class SummaryParser: BaseParser, HTMLParserProtocol {
     public typealias Output = RepositorySummary
     
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        return formatter
-    }()
-    
     public override init() {
         super.init()
     }
     
     public func parse(html: String) throws -> RepositorySummary {
+        print("SummaryParser: Starting to parse HTML (length: \(html.count))")
         let doc = try parseDocument(html)
         
         // Extract repository name from title or header
         let name = try extractRepositoryName(doc: doc)
+        print("SummaryParser: Extracted repository name: \(name)")
         
-        // Extract description if available
-        let description = try? doc.select("div.desc").first()?.text()
+        // Extract description from td.sub
+        let description = try? doc.select("td.sub").first()?.text()
+            .replacingOccurrences(of: "[no description]", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        let finalDescription = description?.isEmpty == false ? description : nil
+        print("SummaryParser: Extracted description: \(finalDescription ?? "nil")")
         
         // Extract clone URLs
         let cloneURLs = try extractCloneURLs(doc: doc)
+        print("SummaryParser: Found \(cloneURLs.count) clone URLs")
         
-        // Extract last commit info
+        // Extract last commit info from the Age/Commit message table
         let lastCommit = try extractLastCommit(doc: doc)
+        print("SummaryParser: Extracted last commit: \(lastCommit?.sha.prefix(7) ?? "nil")")
         
-        // Extract stats (branches, tags, contributors)
-        let (branches, tags, contributors) = try extractStats(doc: doc)
+        // Extract stats (branches, tags)
+        let (branches, tags) = try extractBranchAndTagCounts(doc: doc)
+        print("SummaryParser: Found \(branches) branches and \(tags) tags")
         
         return RepositorySummary(
             name: name,
-            description: description,
+            description: finalDescription,
             lastCommit: lastCommit,
             cloneURLs: cloneURLs,
             branches: branches,
             tags: tags,
-            contributors: contributors
+            contributors: 0 // cgit doesn't show contributors on summary page
         )
     }
     
     private func extractRepositoryName(doc: Document) throws -> String {
         // Try to get from page title first
         if let title = try? doc.select("title").first()?.text() {
-            // Remove suffix like " - summary"
+            // Title format: "repository.git - [no description]"
             if let dashIndex = title.firstIndex(of: "-") {
-                return String(title[..<dashIndex]).trimmingCharacters(in: .whitespaces)
+                let name = String(title[..<dashIndex]).trimmingCharacters(in: .whitespaces)
+                return name.replacingOccurrences(of: ".git", with: "")
             }
-            return title
         }
         
-        // Try from header
-        if let header = try? doc.select("td.main a").array().last?.text() {
-            return header.replacingOccurrences(of: ".git", with: "")
+        // Try from breadcrumb
+        if let lastLink = try? doc.select("td.main a").array().last {
+            let text = try lastLink.text()
+            return text.replacingOccurrences(of: ".git", with: "")
         }
         
         return "Unknown Repository"
@@ -117,23 +120,29 @@ public class SummaryParser: BaseParser, HTMLParserProtocol {
     private func extractCloneURLs(doc: Document) throws -> [RepositorySummary.CloneURL] {
         var urls: [RepositorySummary.CloneURL] = []
         
-        // Look for clone URL section
-        let tables = try doc.select("table").array()
+        // Look for the Clone section in the table
+        let tables = try doc.select("table.list").array()
+        
         for table in tables {
             let rows = try table.select("tr").array()
-            for row in rows {
-                let cells = try row.select("td").array()
-                if cells.count >= 2 {
-                    let label = try cells[0].text().lowercased()
-                    let value = try cells[1].text()
+            
+            for (index, row) in rows.enumerated() {
+                // Look for Clone header
+                if let th = try? row.select("th").first(),
+                   try th.text().lowercased() == "clone",
+                   index + 1 < rows.count {
                     
-                    if label.contains("clone") || label.contains("url") {
-                        if value.hasPrefix("https://") {
-                            urls.append(RepositorySummary.CloneURL(type: .https, url: value))
-                        } else if value.hasPrefix("git://") {
-                            urls.append(RepositorySummary.CloneURL(type: .git, url: value))
-                        } else if value.contains("@") && value.contains(":") {
-                            urls.append(RepositorySummary.CloneURL(type: .ssh, url: value))
+                    // Next row should contain the clone URL
+                    let urlRow = rows[index + 1]
+                    if let urlCell = try? urlRow.select("td").first(),
+                       let link = try? urlCell.select("a").first() {
+                        
+                        let url = try link.text()
+                        
+                        if url.hasPrefix("https://") {
+                            urls.append(RepositorySummary.CloneURL(type: .https, url: url))
+                        } else if url.hasPrefix("git://") {
+                            urls.append(RepositorySummary.CloneURL(type: .git, url: url))
                         }
                     }
                 }
@@ -151,51 +160,50 @@ public class SummaryParser: BaseParser, HTMLParserProtocol {
     }
     
     private func extractLastCommit(doc: Document) throws -> CommitSummaryInfo? {
-        // Look for commit info in summary view
+        // Look for the Age/Commit message table
         let tables = try doc.select("table.list").array()
         
         for table in tables {
-            // Check if this is the commit table
             let rows = try table.select("tr").array()
-            if rows.count > 1 {
-                let firstDataRow = rows[1]
-                let cells = try firstDataRow.select("td").array()
+            
+            // Find the table with Age/Commit message headers
+            if let headerRow = rows.first,
+               let headers = try? headerRow.select("th").array(),
+               headers.count >= 3,
+               try headers[0].text().lowercased().contains("age"),
+               try headers[1].text().lowercased().contains("commit") {
                 
-                if cells.count >= 3 {
-                    // Try to extract commit info
-                    var sha = ""
-                    var message = ""
-                    var author = ""
-                    var date = Date()
+                // Get the first data row
+                if rows.count > 1 {
+                    let dataRow = rows[1]
+                    let cells = try dataRow.select("td").array()
                     
-                    // Look for commit SHA link
-                    if let shaLink = try cells[0].select("a").first() {
-                        sha = try shaLink.text()
-                    }
-                    
-                    // Look for commit message
-                    if cells.count > 1, let msgLink = try cells[1].select("a").first() {
-                        message = try msgLink.text()
-                    }
-                    
-                    // Look for author
-                    if cells.count > 2 {
-                        author = try cells[2].text()
-                    }
-                    
-                    // Look for date
-                    if cells.count > 3 {
-                        let dateText = try cells[3].text()
-                        date = dateFormatter.date(from: dateText) ?? Date()
-                    }
-                    
-                    if !sha.isEmpty && !message.isEmpty {
-                        return CommitSummaryInfo(
-                            sha: sha,
-                            message: message,
-                            author: author,
-                            date: date
-                        )
+                    if cells.count >= 3 {
+                        // Age cell (contains date)
+                        let ageCell = cells[0]
+                        let date = try extractDateFromAgeCell(ageCell)
+                        
+                        // Commit message cell
+                        let messageCell = cells[1]
+                        let messageLink = try messageCell.select("a").first()
+                        let message = try messageLink?.text() ?? ""
+                        
+                        // Extract SHA from commit link href
+                        let href = try messageLink?.attr("href") ?? ""
+                        let sha = extractShaFromHref(href)
+                        
+                        // Author cell
+                        let authorCell = cells[2]
+                        let author = try authorCell.text()
+                        
+                        if !sha.isEmpty && !message.isEmpty {
+                            return CommitSummaryInfo(
+                                sha: sha,
+                                message: message,
+                                author: author,
+                                date: date ?? Date()
+                            )
+                        }
                     }
                 }
             }
@@ -204,43 +212,84 @@ public class SummaryParser: BaseParser, HTMLParserProtocol {
         return nil
     }
     
-    private func extractStats(doc: Document) throws -> (branches: Int, tags: Int, contributors: Int) {
-        var branches = 0
-        var tags = 0
-        var contributors = 0
+    private func extractBranchAndTagCounts(doc: Document) throws -> (branches: Int, tags: Int) {
+        var branchCount = 0
+        var tagCount = 0
         
-        // Look for stats in various places
-        let allText = try doc.text()
+        let tables = try doc.select("table.list").array()
         
-        // Try to find branch count
-        if let branchMatch = allText.range(of: #"(\d+)\s*branch"#, options: .regularExpression) {
-            let numberText = String(allText[branchMatch]).components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-            branches = Int(numberText) ?? 0
+        for table in tables {
+            let rows = try table.select("tr").array()
+            
+            // Look for Branch table
+            if let headerRow = rows.first,
+               let th = try? headerRow.select("th").first(),
+               try th.text().lowercased() == "branch" {
+                // Count non-header rows
+                branchCount = rows.count - 1
+            }
+            
+            // Look for Tag table
+            if let headerRow = rows.first,
+               let th = try? headerRow.select("th").first(),
+               try th.text().lowercased() == "tag" {
+                // Count non-header rows, excluding the "[...]" row if present
+                tagCount = rows.count - 1
+                
+                // Check if last row is "[...]"
+                if let lastRow = rows.last,
+                   let lastCell = try? lastRow.select("td").first(),
+                   try lastCell.text().contains("[...]") {
+                    tagCount -= 1
+                }
+            }
         }
         
-        // Try to find tag count
-        if let tagMatch = allText.range(of: #"(\d+)\s*tag"#, options: .regularExpression) {
-            let numberText = String(allText[tagMatch]).components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-            tags = Int(numberText) ?? 0
+        return (branchCount, tagCount)
+    }
+    
+    private func extractDateFromAgeCell(_ cell: Element) throws -> Date? {
+        // Look for span with title attribute containing the actual date
+        if let span = try? cell.select("span").first(),
+           let dateStr = try? span.attr("title") {
+            // Date format: "2025-06-23 10:46:03 +0000"
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss Z"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            return formatter.date(from: dateStr)
         }
-        
-        // Try to find contributor count
-        if let contribMatch = allText.range(of: #"(\d+)\s*contributor"#, options: .regularExpression) {
-            let numberText = String(allText[contribMatch]).components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
-            contributors = Int(numberText) ?? 0
+        return nil
+    }
+    
+    private func extractShaFromHref(_ href: String) -> String {
+        // href format: "/tosa/reference_model.git/commit/?id=cd167baf693b155805622e340008388cc89f61b2"
+        if let idRange = href.range(of: "id=") {
+            let shaStart = href.index(idRange.upperBound, offsetBy: 0)
+            var sha = String(href[shaStart...])
+            
+            // Remove any trailing parameters
+            if let ampIndex = sha.firstIndex(of: "&") {
+                sha = String(sha[..<ampIndex])
+            }
+            
+            return sha
         }
-        
-        return (branches, tags, contributors)
+        return ""
     }
     
     private func extractRepositoryPath(doc: Document) throws -> String {
-        // Try to extract from breadcrumb or URL
+        // Try to extract from breadcrumb
         if let breadcrumb = try? doc.select("td.main a").array() {
             for link in breadcrumb {
                 let href = try link.attr("href")
-                if href.hasSuffix(".git/") || href.hasSuffix(".git") {
-                    return href.replacingOccurrences(of: "/", with: "")
-                        .replacingOccurrences(of: ".git", with: ".git")
+                let text = try link.text()
+                
+                // Look for the repository link (ends with .git)
+                if text.hasSuffix(".git") {
+                    // Extract path from href
+                    let path = href.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                    return path
                 }
             }
         }

@@ -28,9 +28,20 @@ public class BaseParser {
     
     func parseDocument(_ html: String) throws -> Document {
         do {
+            // Check if HTML is empty or too small
+            guard !html.isEmpty else {
+                print("BaseParser error: Empty HTML content")
+                throw ParserError.invalidHTML
+            }
+            
+            // Log first 500 characters for debugging
+            let preview = String(html.prefix(500))
+            print("BaseParser: Parsing HTML preview: \(preview)...")
+            
             return try SwiftSoup.parse(html)
         } catch {
             print("BaseParser error: Failed to parse HTML - \(error)")
+            print("BaseParser error: HTML length was \(html.count) characters")
             throw ParserError.parsingFailed(reason: error.localizedDescription)
         }
     }

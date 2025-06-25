@@ -25,8 +25,9 @@ class NetworkService: NetworkServiceProtocol {
         configuration.urlCache = cache
         configuration.requestCachePolicy = .returnCacheDataElseLoad
         configuration.timeoutIntervalForRequest = 30
+        // Set a browser-like User-Agent to avoid server blocking
         configuration.httpAdditionalHeaders = [
-            "User-Agent": "MLGit-iOS/1.0"
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         ]
         self.session = URLSession(configuration: configuration)
     }
@@ -44,7 +45,12 @@ class NetworkService: NetworkServiceProtocol {
         
         print("Fetching HTML from: \(url.absoluteString)")
         
-        let (data, response) = try await session.data(from: url)
+        // Create request with explicit User-Agent
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 30
+        
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse
@@ -77,7 +83,12 @@ class NetworkService: NetworkServiceProtocol {
         // For binary data, we'll use URLCache instead of our custom cache
         logger.debug("Fetching data from: \(url.absoluteString)")
         
-        let (data, response) = try await session.data(from: url)
+        // Create request with explicit User-Agent
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 30
+        
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NetworkError.invalidResponse

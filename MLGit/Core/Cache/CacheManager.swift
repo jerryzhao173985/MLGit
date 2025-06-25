@@ -62,17 +62,36 @@ class CacheManager: ObservableObject {
         let fileURL = cacheFileURL(for: key)
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let timestamp = getCacheMetadata(for: key),
-              !isExpired(timestamp),
-              let data = try? Data(contentsOf: fileURL),
-              let html = String(data: data, encoding: .utf8) else {
+              !isExpired(timestamp) else {
             return nil
         }
         
-        // Load into memory cache
-        let entry = CacheEntry(data: data, timestamp: timestamp)
-        memoryCache.setObject(entry, forKey: key as NSString)
-        
-        return html
+        // Read file asynchronously
+        do {
+            let data = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let fileData = try Data(contentsOf: fileURL)
+                        continuation.resume(returning: fileData)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+            
+            guard let html = String(data: data, encoding: .utf8) else {
+                return nil
+            }
+            
+            // Load into memory cache
+            let entry = CacheEntry(data: data, timestamp: timestamp)
+            memoryCache.setObject(entry, forKey: key as NSString)
+            
+            return html
+        } catch {
+            // If reading fails, return nil
+            return nil
+        }
     }
     
     func cacheData<T: Codable>(_ object: T, for key: String) async {
@@ -101,16 +120,32 @@ class CacheManager: ObservableObject {
         let fileURL = cacheDirectory.appendingPathComponent("\(key).json")
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let timestamp = getCacheMetadata(for: key),
-              !isExpired(timestamp),
-              let data = try? Data(contentsOf: fileURL) else {
+              !isExpired(timestamp) else {
             return nil
         }
         
-        // Load into memory cache
-        let entry = CacheEntry(data: data, timestamp: timestamp)
-        memoryCache.setObject(entry, forKey: key as NSString)
+        // Read file asynchronously
+        do {
+            let data = try await withCheckedThrowingContinuation { continuation in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    do {
+                        let fileData = try Data(contentsOf: fileURL)
+                        continuation.resume(returning: fileData)
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
         
-        return try? JSONDecoder().decode(type, from: data)
+            // Load into memory cache
+            let entry = CacheEntry(data: data, timestamp: timestamp)
+            memoryCache.setObject(entry, forKey: key as NSString)
+            
+            return try? JSONDecoder().decode(type, from: data)
+        } catch {
+            // If reading fails, return nil
+            return nil
+        }
     }
     
     func clearCache() async {

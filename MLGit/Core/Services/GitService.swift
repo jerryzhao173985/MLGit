@@ -6,6 +6,9 @@ import GitHTMLParser
 class GitService: ObservableObject {
     static let shared = GitService()
     
+    // Serial queue to prevent race conditions
+    private let requestQueue = DispatchQueue(label: "com.mlgit.gitservice", attributes: .concurrent)
+    
     private let networkService: NetworkServiceProtocol
     private let catalogueParser = CatalogueParser()
     private let commitListParser = CommitListParser()
@@ -14,6 +17,8 @@ class GitService: ObservableObject {
     private let commitDetailParser = CommitDetailParser()
     private let diffParser = DiffParser()
     private let summaryParser = SummaryParser()
+    private let aboutParser = AboutParser()
+    private let fileContentParser = FileContentParser()
     
     @Published var isLoading = false
     @Published var error: Error?
@@ -172,9 +177,26 @@ class GitService: ObservableObject {
         defer { isLoading = false }
         
         do {
-            let url = URLBuilder.repository(path: repositoryPath)
+            // Use the summary URL instead of repository URL
+            let url = URLBuilder.summary(repositoryPath: repositoryPath)
+            print("GitService: Fetching repository summary from: \(url)")
             let html = try await networkService.fetchHTML(from: url)
             return try summaryParser.parse(html: html)
+        } catch {
+            print("GitService: Failed to fetch repository summary - \(error)")
+            self.error = error
+            throw error
+        }
+    }
+    
+    func fetchAboutContent(repositoryPath: String) async throws -> AboutContent {
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let url = URLBuilder.about(repositoryPath: repositoryPath)
+            let html = try await networkService.fetchHTML(from: url)
+            return try aboutParser.parse(html: html)
         } catch {
             self.error = error
             throw error
@@ -200,19 +222,35 @@ class GitService: ObservableObject {
         defer { isLoading = false }
         
         do {
-            let url = URLBuilder.plain(repositoryPath: repositoryPath, path: path, sha: sha)
-            let data = try await networkService.fetchData(from: url)
+            // Try to get the plain content first
+            let plainUrl = URLBuilder.plain(repositoryPath: repositoryPath, path: path, sha: sha)
             
-            let content = String(data: data, encoding: .utf8) ?? ""
-            let isBinary = content.isEmpty && data.count > 0
-            
-            return FileContent(
-                path: path,
-                content: content,
-                size: Int64(data.count),
-                encoding: "UTF-8",
-                isBinary: isBinary
-            )
+            do {
+                let data = try await networkService.fetchData(from: plainUrl)
+                let content = String(data: data, encoding: .utf8) ?? ""
+                let isBinary = content.isEmpty && data.count > 0
+                
+                return FileContent(
+                    path: path,
+                    content: content,
+                    size: Int64(data.count),
+                    encoding: "UTF-8",
+                    isBinary: isBinary
+                )
+            } catch {
+                // If plain fails, try parsing the blob HTML page
+                let blobUrl = URLBuilder.blob(repositoryPath: repositoryPath, path: path, sha: sha)
+                let html = try await networkService.fetchHTML(from: blobUrl)
+                let fileInfo = try fileContentParser.parse(html: html)
+                
+                return FileContent(
+                    path: fileInfo.path,
+                    content: fileInfo.content,
+                    size: fileInfo.size ?? Int64(fileInfo.content.utf8.count),
+                    encoding: "UTF-8",
+                    isBinary: fileInfo.isBinary
+                )
+            }
         } catch {
             self.error = error
             throw error
