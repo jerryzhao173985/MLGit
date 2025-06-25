@@ -31,7 +31,9 @@ struct URLBuilder {
     }
     
     static func patch(repositoryPath: String, sha: String) -> URL {
-        URL(string: "\(baseURL)/\(repositoryPath)/patch/?id=\(sha)")!
+        let urlString = "\(baseURL)/\(repositoryPath)/patch/?id=\(sha)"
+        print("URLBuilder: Constructing patch URL: \(urlString)")
+        return URL(string: urlString)!
     }
     
     static func tree(repositoryPath: String, path: String? = nil, sha: String? = nil) -> URL {
@@ -39,7 +41,8 @@ struct URLBuilder {
         var queryItems: [String] = []
         
         if let path = path {
-            queryItems.append("path=\(path)")
+            let encodedPath = path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? path
+            queryItems.append("path=\(encodedPath)")
         }
         
         if let sha = sha {
@@ -54,7 +57,9 @@ struct URLBuilder {
     }
     
     static func blob(repositoryPath: String, path: String, sha: String? = nil) -> URL {
-        var urlString = "\(baseURL)/\(repositoryPath)/blob/?path=\(path)"
+        // URL encode the path to handle special characters and nested paths
+        let encodedPath = path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? path
+        var urlString = "\(baseURL)/\(repositoryPath)/blob/?path=\(encodedPath)"
         
         if let sha = sha {
             urlString += "&id=\(sha)"
@@ -64,7 +69,9 @@ struct URLBuilder {
     }
     
     static func plain(repositoryPath: String, path: String, sha: String? = nil) -> URL {
-        var urlString = "\(baseURL)/\(repositoryPath)/plain/\(path)"
+        // URL encode the path to handle special characters and nested paths
+        let encodedPath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        var urlString = "\(baseURL)/\(repositoryPath)/plain/\(encodedPath)"
         
         if let sha = sha {
             urlString += "?id=\(sha)"
@@ -74,7 +81,9 @@ struct URLBuilder {
     }
     
     static func diff(repositoryPath: String, sha: String) -> URL {
-        URL(string: "\(baseURL)/\(repositoryPath)/diff/?id=\(sha)")!
+        let urlString = "\(baseURL)/\(repositoryPath)/diff/?id=\(sha)"
+        print("URLBuilder: Constructing diff URL: \(urlString)")
+        return URL(string: urlString)!
     }
     
     static func summary(repositoryPath: String) -> URL {

@@ -3,14 +3,17 @@ import Combine
 
 @MainActor
 class CacheManager: ObservableObject {
-    static let shared = CacheManager()
+    private static let _shared = CacheManager()
+    
+    static var shared: CacheManager {
+        return _shared
+    }
     
     private let cacheDirectory: URL
-    private let cacheExpirationInterval: TimeInterval = 3600 // 1 hour
-    private let maxCacheSize: Int64 = 100 * 1024 * 1024 // 100 MB
+    private let maxCacheSize: Int64 = 200 * 1024 * 1024 // 200 MB (increased)
     
     // Memory cache for frequently accessed data
-    private var memoryCache = NSCache<NSString, CacheEntry>()
+    private var memoryCache = NSCache<NSString, PolicyCacheEntry>()
     
     private init() {
         // Create cache directory
@@ -33,7 +36,12 @@ class CacheManager: ObservableObject {
     
     func cacheHTML(_ html: String, for url: URL) async {
         let key = cacheKey(for: url)
-        let entry = CacheEntry(data: html.data(using: .utf8)!, timestamp: Date())
+        let policy = CachePolicy.policy(for: url)
+        let entry = PolicyCacheEntry(
+            data: html.data(using: .utf8)!,
+            timestamp: Date(),
+            policy: policy
+        )
         
         // Memory cache
         memoryCache.setObject(entry, forKey: key as NSString)
@@ -42,8 +50,8 @@ class CacheManager: ObservableObject {
         let fileURL = cacheFileURL(for: key)
         try? entry.data.write(to: fileURL)
         
-        // Save metadata
-        saveCacheMetadata(for: key, timestamp: entry.timestamp)
+        // Save metadata with policy
+        saveCacheMetadata(for: key, timestamp: entry.timestamp, policy: policy)
     }
     
     func getCachedHTML(for url: URL) async -> String? {
@@ -51,7 +59,7 @@ class CacheManager: ObservableObject {
         
         // Check memory cache first
         if let entry = memoryCache.object(forKey: key as NSString) {
-            if !isExpired(entry.timestamp) {
+            if !entry.isExpired {
                 return String(data: entry.data, encoding: .utf8)
             } else {
                 memoryCache.removeObject(forKey: key as NSString)
@@ -61,8 +69,14 @@ class CacheManager: ObservableObject {
         // Check disk cache
         let fileURL = cacheFileURL(for: key)
         guard FileManager.default.fileExists(atPath: fileURL.path),
-              let timestamp = getCacheMetadata(for: key),
-              !isExpired(timestamp) else {
+              let metadata = getCacheMetadata(for: key) else {
+            return nil
+        }
+        
+        // Check if expired based on policy
+        let policy = metadata.policy ?? CachePolicy.policy(for: url)
+        let elapsed = Date().timeIntervalSince(metadata.timestamp)
+        if elapsed > policy.expirationInterval {
             return nil
         }
         
@@ -84,7 +98,11 @@ class CacheManager: ObservableObject {
             }
             
             // Load into memory cache
-            let entry = CacheEntry(data: data, timestamp: timestamp)
+            let entry = PolicyCacheEntry(
+                data: data,
+                timestamp: metadata.timestamp,
+                policy: policy
+            )
             memoryCache.setObject(entry, forKey: key as NSString)
             
             return html
@@ -94,22 +112,22 @@ class CacheManager: ObservableObject {
         }
     }
     
-    func cacheData<T: Codable>(_ object: T, for key: String) async {
+    func cacheData<T: Codable>(_ object: T, for key: String, policy: CachePolicy = .custom(3600)) async {
         guard let data = try? JSONEncoder().encode(object) else { return }
         
-        let entry = CacheEntry(data: data, timestamp: Date())
+        let entry = PolicyCacheEntry(data: data, timestamp: Date(), policy: policy)
         memoryCache.setObject(entry, forKey: key as NSString)
         
         let fileURL = cacheDirectory.appendingPathComponent("\(key).json")
         try? data.write(to: fileURL)
         
-        saveCacheMetadata(for: key, timestamp: entry.timestamp)
+        saveCacheMetadata(for: key, timestamp: entry.timestamp, policy: policy)
     }
     
     func getCachedData<T: Codable>(_ type: T.Type, for key: String) async -> T? {
         // Check memory cache
         if let entry = memoryCache.object(forKey: key as NSString) {
-            if !isExpired(entry.timestamp) {
+            if !entry.isExpired {
                 return try? JSONDecoder().decode(type, from: entry.data)
             } else {
                 memoryCache.removeObject(forKey: key as NSString)
@@ -119,8 +137,14 @@ class CacheManager: ObservableObject {
         // Check disk cache
         let fileURL = cacheDirectory.appendingPathComponent("\(key).json")
         guard FileManager.default.fileExists(atPath: fileURL.path),
-              let timestamp = getCacheMetadata(for: key),
-              !isExpired(timestamp) else {
+              let metadata = getCacheMetadata(for: key) else {
+            return nil
+        }
+        
+        // Check if expired
+        let policy = metadata.policy ?? CachePolicy.custom(3600)
+        let elapsed = Date().timeIntervalSince(metadata.timestamp)
+        if elapsed > policy.expirationInterval {
             return nil
         }
         
@@ -138,7 +162,11 @@ class CacheManager: ObservableObject {
             }
         
             // Load into memory cache
-            let entry = CacheEntry(data: data, timestamp: timestamp)
+            let entry = PolicyCacheEntry(
+                data: data,
+                timestamp: metadata.timestamp,
+                policy: policy
+            )
             memoryCache.setObject(entry, forKey: key as NSString)
             
             return try? JSONDecoder().decode(type, from: data)
@@ -191,39 +219,55 @@ class CacheManager: ObservableObject {
         return cacheDirectory.appendingPathComponent("\(key).html")
     }
     
-    private func isExpired(_ timestamp: Date) -> Bool {
-        return Date().timeIntervalSince(timestamp) > cacheExpirationInterval
+    private func isExpired(_ timestamp: Date, policy: CachePolicy? = nil) -> Bool {
+        let interval = policy?.expirationInterval ?? CachePolicy.fileContent.expirationInterval
+        return Date().timeIntervalSince(timestamp) > interval
     }
     
-    private func saveCacheMetadata(for key: String, timestamp: Date) {
+    private func saveCacheMetadata(for key: String, timestamp: Date, policy: CachePolicy? = nil) {
         var metadata = UserDefaults.standard.dictionary(forKey: "MLGitCacheMetadata") ?? [:]
-        metadata[key] = timestamp.timeIntervalSince1970
+        let metaInfo: [String: Any] = [
+            "timestamp": timestamp.timeIntervalSince1970,
+            "policyInterval": policy?.expirationInterval ?? CachePolicy.fileContent.expirationInterval
+        ]
+        metadata[key] = metaInfo
         UserDefaults.standard.set(metadata, forKey: "MLGitCacheMetadata")
     }
     
-    private func getCacheMetadata(for key: String) -> Date? {
-        guard let metadata = UserDefaults.standard.dictionary(forKey: "MLGitCacheMetadata"),
-              let timestamp = metadata[key] as? TimeInterval else {
+    private func getCacheMetadata(for key: String) -> (timestamp: Date, policy: CachePolicy?)? {
+        guard let metadata = UserDefaults.standard.dictionary(forKey: "MLGitCacheMetadata") else {
             return nil
         }
-        return Date(timeIntervalSince1970: timestamp)
+        
+        if let metaInfo = metadata[key] as? [String: Any],
+           let timestamp = metaInfo["timestamp"] as? TimeInterval {
+            let interval = metaInfo["policyInterval"] as? TimeInterval
+            let policy = interval.map { CachePolicy.custom($0) }
+            return (Date(timeIntervalSince1970: timestamp), policy)
+        } else if let timestamp = metadata[key] as? TimeInterval {
+            // Legacy format
+            return (Date(timeIntervalSince1970: timestamp), nil)
+        }
+        
+        return nil
     }
     
     private func cleanExpiredCache() async {
         do {
             let files = try FileManager.default.contentsOfDirectory(at: cacheDirectory, includingPropertiesForKeys: [.creationDateKey])
-            var metadata = UserDefaults.standard.dictionary(forKey: "MLGitCacheMetadata") ?? [:]
+            var allMetadata = UserDefaults.standard.dictionary(forKey: "MLGitCacheMetadata") ?? [:]
             
             for file in files {
                 let key = file.deletingPathExtension().lastPathComponent
-                if let timestamp = getCacheMetadata(for: key), isExpired(timestamp) {
+                if let metadata = getCacheMetadata(for: key), 
+                   isExpired(metadata.timestamp, policy: metadata.policy) {
                     try FileManager.default.removeItem(at: file)
-                    metadata.removeValue(forKey: key)
+                    allMetadata.removeValue(forKey: key)
                     memoryCache.removeObject(forKey: key as NSString)
                 }
             }
             
-            UserDefaults.standard.set(metadata, forKey: "MLGitCacheMetadata")
+            UserDefaults.standard.set(allMetadata, forKey: "MLGitCacheMetadata")
             
             // Check cache size and remove oldest files if needed
             let currentSize = await getCacheSize()
@@ -270,18 +314,6 @@ class CacheManager: ObservableObject {
     }
 }
 
-// MARK: - Cache Entry
-
-private class CacheEntry: NSObject {
-    let data: Data
-    let timestamp: Date
-    
-    init(data: Data, timestamp: Date) {
-        self.data = data
-        self.timestamp = timestamp
-        super.init()
-    }
-}
 
 // MARK: - URLSession Extension for Caching
 

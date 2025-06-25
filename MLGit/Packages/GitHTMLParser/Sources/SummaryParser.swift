@@ -55,8 +55,8 @@ public struct CommitSummaryInfo {
 public class SummaryParser: BaseParser, HTMLParserProtocol {
     public typealias Output = RepositorySummary
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "SummaryParser")
     }
     
     public func parse(html: String) throws -> RepositorySummary {

@@ -38,8 +38,8 @@ public struct CommitListResult {
 public class CommitListParser: BaseParser, HTMLParserProtocol {
     public typealias Output = CommitListResult
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "CommitListParser")
     }
     
     public func parse(html: String) throws -> CommitListResult {

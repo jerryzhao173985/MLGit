@@ -27,13 +27,22 @@ class FileDetailViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
+        print("FileDetailViewModel: Loading file - repository: \(repositoryPath), path: \(filePath)")
+        
         do {
             fileContent = try await gitService.fetchFileContent(
                 repositoryPath: repositoryPath,
                 path: filePath,
                 sha: nil
             )
+            
+            if let content = fileContent {
+                print("FileDetailViewModel: Loaded file - size: \(content.size), isBinary: \(content.isBinary), contentLength: \(content.content.count)")
+            } else {
+                print("FileDetailViewModel: No content returned")
+            }
         } catch {
+            print("FileDetailViewModel: Error loading file - \(error)")
             self.error = error
         }
     }

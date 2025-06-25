@@ -58,6 +58,17 @@ class NetworkService: NetworkServiceProtocol {
         
         guard (200...299).contains(httpResponse.statusCode) else {
             print("NetworkService: HTTP error \(httpResponse.statusCode) for URL: \(url)")
+            
+            // Log error response body for debugging
+            if let errorBody = String(data: data, encoding: .utf8) {
+                print("NetworkService: Error response body: \(errorBody)")
+                
+                // Log error HTML for debugging
+                Task {
+                    HTMLDebugLogger.shared.logHTML(errorBody, for: url, parserType: "NetworkService-Error-\(httpResponse.statusCode)")
+                }
+            }
+            
             throw NetworkError.httpError(httpResponse.statusCode)
         }
         
@@ -66,6 +77,9 @@ class NetworkService: NetworkServiceProtocol {
         }
         
         print("Successfully fetched HTML, size: \(data.count) bytes")
+        
+        // Log HTML for debugging if enabled
+        HTMLDebugLogger.shared.logHTML(html, for: url, parserType: "NetworkService")
         
         // Cache the response if caching is enabled
         if useCache {
@@ -122,17 +136,34 @@ enum NetworkError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid URL"
+            return "Invalid URL format. Please check the repository path."
         case .invalidResponse:
-            return "Invalid server response"
+            return "Invalid server response. The server may be temporarily unavailable."
         case .httpError(let code):
-            return code == 404 ? "Repository not found" : "HTTP error: \(code)"
+            switch code {
+            case 400:
+                return "Bad request. The server couldn't understand the request format."
+            case 401:
+                return "Authentication required. Please check your credentials."
+            case 403:
+                return "Access forbidden. You don't have permission to access this resource."
+            case 404:
+                return "Not found. The repository or file may not exist."
+            case 500:
+                return "Server error. The git server encountered an internal error."
+            case 502:
+                return "Bad gateway. The git server is having connectivity issues."
+            case 503:
+                return "Service unavailable. The git server is temporarily down."
+            default:
+                return "HTTP error \(code). Please try again later."
+            }
         case .decodingError:
-            return "Failed to decode response"
+            return "Failed to decode response. The server returned unexpected data."
         case .noData:
-            return "No data received"
+            return "No data received from server. Please check your connection."
         case .parsingError(let message):
-            return "Failed to parse response: \(message)"
+            return "Failed to parse git data: \(message)"
         }
     }
 }

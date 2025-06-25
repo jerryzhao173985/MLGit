@@ -68,6 +68,12 @@ struct SettingsView: View {
                 
                 Link("About MLGit", destination: URL(string: "https://git.mlplatform.org/about")!)
             }
+            
+            Section("Developer") {
+                NavigationLink(destination: DeveloperSettingsView()) {
+                    Label("Developer Settings", systemImage: "hammer")
+                }
+            }
         }
         .navigationTitle("Settings")
         .alert("Clear Cache", isPresented: $showingClearCacheAlert) {

@@ -14,36 +14,64 @@ public enum ParserError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidHTML:
-            return "Invalid HTML content"
+            return "Invalid or empty response from git server. The page may have failed to load."
         case .missingElement(let selector):
-            return "Missing required element: \(selector)"
+            if selector.contains("blob") {
+                return "File content not found. The file may be empty or the server response was incomplete."
+            } else if selector.contains("diff") {
+                return "Diff data not found. The commit may have no changes or the diff is still loading."
+            } else if selector.contains("list") {
+                return "Repository list not found. The server may be updating or temporarily unavailable."
+            } else {
+                return "Required content not found on page. The git server may have returned an incomplete response."
+            }
         case .parsingFailed(let reason):
-            return "Parsing failed: \(reason)"
+            return "Failed to process git server response: \(reason)"
         }
     }
 }
 
 public class BaseParser {
-    public init() {}
+    public let parserName: String
     
-    func parseDocument(_ html: String) throws -> Document {
+    public init(parserName: String = "BaseParser") {
+        self.parserName = parserName
+    }
+    
+    func parseDocument(_ html: String, url: URL? = nil) throws -> Document {
         do {
             // Check if HTML is empty or too small
             guard !html.isEmpty else {
-                print("BaseParser error: Empty HTML content")
+                print("\(parserName) error: Empty HTML content")
                 throw ParserError.invalidHTML
             }
             
             // Log first 500 characters for debugging
             let preview = String(html.prefix(500))
-            print("BaseParser: Parsing HTML preview: \(preview)...")
+            print("\(parserName): Parsing HTML preview: \(preview)...")
+            
+            // Log full HTML if URL is provided and debug mode is enabled
+            if let url = url {
+                logHTMLForDebug(html, url: url)
+            }
             
             return try SwiftSoup.parse(html)
         } catch {
-            print("BaseParser error: Failed to parse HTML - \(error)")
-            print("BaseParser error: HTML length was \(html.count) characters")
+            print("\(parserName) error: Failed to parse HTML - \(error)")
+            print("\(parserName) error: HTML length was \(html.count) characters")
             throw ParserError.parsingFailed(reason: error.localizedDescription)
         }
+    }
+    
+    // Default implementation - can be overridden by subclasses
+    func parseDocument(_ html: String) throws -> Document {
+        try parseDocument(html, url: nil)
+    }
+    
+    private func logHTMLForDebug(_ html: String, url: URL) {
+        // This would integrate with HTMLDebugLogger if available
+        // For now, just log a message
+        print("\(parserName): Processing HTML from \(url.absoluteString)")
     }
     
     func parseDate(from string: String) -> Date? {

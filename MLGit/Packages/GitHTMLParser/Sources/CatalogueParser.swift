@@ -20,8 +20,8 @@ public struct ProjectInfo {
 public class CatalogueParser: BaseParser, HTMLParserProtocol {
     public typealias Output = [ProjectInfo]
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "CatalogueParser")
     }
     
     public func parse(html: String) throws -> [ProjectInfo] {

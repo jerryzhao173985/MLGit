@@ -27,12 +27,24 @@ class PatchViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
+        print("PatchViewModel: Loading patch for commit: \(commitSHA)")
+        
         do {
             patch = try await gitService.fetchPatch(
                 repositoryPath: repositoryPath,
                 sha: commitSHA
             )
+            
+            if let patch = patch {
+                print("PatchViewModel: Loaded patch - length: \(patch.count)")
+                if patch.isEmpty {
+                    print("PatchViewModel: WARNING - Patch is empty!")
+                }
+            } else {
+                print("PatchViewModel: No patch returned")
+            }
         } catch {
+            print("PatchViewModel: Error loading patch - \(error)")
             self.error = error
         }
     }

@@ -37,8 +37,8 @@ public struct RefsResult {
 public class RefsParser: BaseParser, HTMLParserProtocol {
     public typealias Output = RefsResult
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "RefsParser")
     }
     
     public func parse(html: String) throws -> RefsResult {

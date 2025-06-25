@@ -3,9 +3,9 @@ import SwiftUI
 
 struct RepositoryView: View {
     let repositoryPath: String
+    @State private var selectedTab = 0
     @StateObject private var viewModel: RepositoryViewModel
     @StateObject private var starredViewModel = StarredViewModel()
-    @State private var selectedTab = 0
     
     enum Tab: Int, CaseIterable {
         case summary = 0
@@ -50,8 +50,8 @@ struct RepositoryView: View {
                         print("RepositoryView: Showing loading state")
                     }
             } else if let repository = viewModel.repository {
-                let _ = print("RepositoryView: Showing repository content for: \(repository.name)")
-                VStack(spacing: 0) {
+                    let _ = print("RepositoryView: Showing repository content for: \(repository.name)")
+                    VStack(spacing: 0) {
                     // Custom tab bar
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 20) {
@@ -111,6 +111,8 @@ struct RepositoryView: View {
         .task {
             await viewModel.loadRepository()
         }
+        // Removed aggressive request cancellation that was causing issues
+        // Views should manage their own request lifecycle
         .alert("Error", isPresented: .constant(viewModel.error != nil)) {
             Button("OK") {
                 viewModel.error = nil

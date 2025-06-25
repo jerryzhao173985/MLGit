@@ -32,6 +32,16 @@ struct ContentView: View {
                 Label("Settings", systemImage: "gear")
             }
             .tag(2)
+            
+            #if DEBUG
+            NavigationView {
+                TestEnhancementsView()
+            }
+            .tabItem {
+                Label("Debug", systemImage: "ladybug")
+            }
+            .tag(3)
+            #endif
         }
         .onReceive(appState.$error) { error in
             showingAppError = error != nil

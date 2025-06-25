@@ -4,7 +4,11 @@ import Combine
 
 @MainActor
 class NetworkMonitor: ObservableObject {
-    static let shared = NetworkMonitor()
+    private static let _shared = NetworkMonitor()
+    
+    static var shared: NetworkMonitor {
+        return _shared
+    }
     
     @Published var isConnected = true
     @Published var connectionType: NWInterface.InterfaceType?

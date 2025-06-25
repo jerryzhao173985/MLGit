@@ -27,8 +27,8 @@ public struct TreeNode {
 public class TreeParser: BaseParser, HTMLParserProtocol {
     public typealias Output = [TreeNode]
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "TreeParser")
     }
     
     public func parse(html: String) throws -> [TreeNode] {
@@ -66,15 +66,25 @@ public class TreeParser: BaseParser, HTMLParserProtocol {
             let name = try link.text()
             let href = try link.attr("href")
             
-            // Determine node type from link classes and href
-            let nodeType = try determineNodeType(from: link, mode: mode, href: href)
+            // Extract size first
+            let sizeText = try sizeCell.text().trimmingCharacters(in: .whitespacesAndNewlines)
+            let size = parseSize(from: sizeText)
+            
+            // Determine node type from multiple strategies
+            var nodeType = try determineNodeType(from: link, mode: mode, href: href)
+            
+            // Additional check: If we detected as file but size is empty/zero, might be directory
+            if nodeType == .file && (size == nil || size == 0) && !mode.hasPrefix("-") {
+                print("TreeParser: Re-evaluating '\(name)' - no size for supposed file")
+                // Only override if we're not confident about file detection
+                if !href.contains("/blob/") && !href.contains("/plain/") {
+                    nodeType = .directory
+                    print("TreeParser: Changed '\(name)' to directory due to missing size")
+                }
+            }
             
             // Extract path from name (for files in subdirectories)
             let path = name
-            
-            // Extract size
-            let sizeText = try sizeCell.text().trimmingCharacters(in: .whitespacesAndNewlines)
-            let size = parseSize(from: sizeText)
             
             let node = TreeNode(
                 name: name,
@@ -91,29 +101,99 @@ public class TreeParser: BaseParser, HTMLParserProtocol {
     }
     
     private func determineNodeType(from link: Element, mode: String, href: String) throws -> TreeNode.NodeType {
-        // Check link classes first
+        // Enhanced logging for debugging
         let classes = try link.className()
+        let linkText = try link.text()
         
+        print("TreeParser: Analyzing node '\(linkText)':")
+        print("  - Classes: '\(classes)'")
+        print("  - Mode: '\(mode)'")
+        print("  - Href: '\(href)'")
+        
+        // Strategy 1: Check link classes (most reliable for cgit)
         if classes.contains("ls-dir") {
+            print("  -> Detected as directory via ls-dir class")
             return .directory
         } else if classes.contains("ls-blob") {
+            print("  -> Detected as file via ls-blob class")
             return .file
         }
         
-        // Fallback to mode-based detection
-        if mode.hasPrefix("d") {
-            return .directory
-        } else if mode.hasPrefix("l") {
-            return .symlink
-        } else if mode.hasPrefix("m") {
-            return .submodule
+        // Strategy 2: Check parent td element classes
+        if let parentTd = link.parent() {
+            let tdClasses = (try? parentTd.className()) ?? ""
+            if tdClasses.contains("ls-dir") {
+                print("  -> Detected as directory via parent td ls-dir class")
+                return .directory
+            } else if tdClasses.contains("ls-blob") {
+                print("  -> Detected as file via parent td ls-blob class")
+                return .file
+            }
         }
         
-        // Check href as last resort
-        if href.contains("/tree/") && !href.contains("?") {
-            return .directory
+        // Strategy 3: Mode-based detection (Unix file permissions)
+        let trimmedMode = mode.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedMode.isEmpty && trimmedMode != "-" {
+            let firstChar = trimmedMode.first ?? "-"
+            switch firstChar {
+            case "d":
+                print("  -> Detected as directory via mode '\(trimmedMode)'")
+                return .directory
+            case "l":
+                print("  -> Detected as symlink via mode '\(trimmedMode)'")
+                return .symlink
+            case "m":
+                print("  -> Detected as submodule via mode '\(trimmedMode)'")
+                return .submodule
+            case "-":
+                print("  -> Detected as file via mode '\(trimmedMode)'")
+                return .file
+            default:
+                print("  -> Unknown mode prefix: '\(firstChar)'")
+            }
         }
         
+        // Strategy 4: URL pattern detection
+        if href.contains("/tree/") {
+            print("  -> Detected as directory via /tree/ in href")
+            return .directory
+        } else if href.contains("/blob/") {
+            print("  -> Detected as file via /blob/ in href")
+            return .file
+        } else if href.contains("/plain/") {
+            print("  -> Detected as file via /plain/ in href")
+            return .file
+        }
+        
+        // Strategy 5: File extension heuristic
+        let filename = linkText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !filename.isEmpty {
+            // Common directory patterns
+            if filename == ".." || filename == "." {
+                print("  -> Detected as directory via special name")
+                return .directory
+            }
+            
+            // Check for file extension
+            let hasExtension = filename.contains(".") && 
+                             !filename.hasPrefix(".") && 
+                             !filename.hasSuffix(".")
+            
+            // Special cases for common extensionless files
+            let commonFiles = ["README", "LICENSE", "NOTICE", "Makefile", "Dockerfile", "Jenkinsfile", "Vagrantfile"]
+            let isCommonFile = commonFiles.contains(filename)
+            
+            if hasExtension || isCommonFile {
+                print("  -> Likely a file based on name pattern: '\(filename)'")
+                return .file
+            } else if !filename.contains(".") {
+                print("  -> Likely a directory (no extension): '\(filename)'")
+                return .directory
+            }
+        }
+        
+        // Default: Assume file if we can't determine
+        print("  -> Defaulting to file (no detection method matched)")
         return .file
     }
     

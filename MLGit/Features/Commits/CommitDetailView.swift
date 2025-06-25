@@ -42,7 +42,7 @@ struct CommitDetailView: View {
                     }
                     
                     Button(action: { showingPatch = true }) {
-                        Label("View Patch", systemImage: "doc.text")
+                        Label("View Diff", systemImage: "doc.text.below.ecg")
                             .frame(maxWidth: .infinity)
                             .padding()
                             .background(Color.blue)
@@ -71,12 +71,10 @@ struct CommitDetailView: View {
             }
         }
         .sheet(isPresented: $showingPatch) {
-            NavigationView {
-                PatchView(
-                    repositoryPath: repositoryPath,
-                    commitSHA: commitSHA
-                )
-            }
+            EnhancedDiffView(
+                repositoryPath: repositoryPath,
+                commitSHA: commitSHA
+            )
         }
         .task {
             await viewModel.loadCommit()

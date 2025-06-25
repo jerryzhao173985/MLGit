@@ -80,8 +80,8 @@ public class CommitDetailParser: BaseParser, HTMLParserProtocol {
         return formatter
     }()
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "CommitDetailParser")
     }
     
     public func parse(html: String) throws -> CommitDetailInfo {

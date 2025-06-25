@@ -4,12 +4,17 @@ import GitHTMLParser
 
 @MainActor
 class GitService: ObservableObject {
-    static let shared = GitService()
+    private static let _shared = GitService()
+    
+    static var shared: GitService {
+        return _shared
+    }
     
     // Serial queue to prevent race conditions
     private let requestQueue = DispatchQueue(label: "com.mlgit.gitservice", attributes: .concurrent)
     
     private let networkService: NetworkServiceProtocol
+    private let requestManager = RequestManager.shared
     private let catalogueParser = CatalogueParser()
     private let commitListParser = CommitListParser()
     private let treeParser = TreeParser()
@@ -33,7 +38,7 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.catalogue()
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             
             do {
                 let projectInfos = try catalogueParser.parse(html: html)
@@ -68,7 +73,7 @@ class GitService: ObservableObject {
         
         do {
             let aboutURL = URLBuilder.about(repositoryPath: path)
-            let aboutHTML = try await networkService.fetchHTML(from: aboutURL)
+            let aboutHTML = try await requestManager.fetchHTML(from: aboutURL)
             
             let repository = Repository(
                 id: path,
@@ -93,7 +98,7 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.log(repositoryPath: repositoryPath, offset: offset)
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             let result = try commitListParser.parse(html: html)
             
             return result
@@ -109,7 +114,7 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.commit(repositoryPath: repositoryPath, sha: sha)
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             
             return try parseCommitDetail(from: html, sha: sha)
         } catch {
@@ -124,7 +129,7 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.patch(repositoryPath: repositoryPath, sha: sha)
-            let patch = try await networkService.fetchHTML(from: url)
+            let patch = try await requestManager.fetchHTML(from: url)
             return patch
         } catch {
             self.error = error
@@ -138,7 +143,8 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.tree(repositoryPath: repositoryPath, path: path, sha: sha)
-            let html = try await networkService.fetchHTML(from: url)
+            print("GitService: Fetching tree for path: \(path ?? "root")")
+            let html = try await requestManager.fetchHTML(from: url)
             let treeNodes = try treeParser.parse(html: html)
             
             return treeNodes.map { node in
@@ -164,7 +170,7 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.refs(repositoryPath: repositoryPath)
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             return try refsParser.parse(html: html)
         } catch {
             self.error = error
@@ -180,7 +186,7 @@ class GitService: ObservableObject {
             // Use the summary URL instead of repository URL
             let url = URLBuilder.summary(repositoryPath: repositoryPath)
             print("GitService: Fetching repository summary from: \(url)")
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             return try summaryParser.parse(html: html)
         } catch {
             print("GitService: Failed to fetch repository summary - \(error)")
@@ -195,7 +201,7 @@ class GitService: ObservableObject {
         
         do {
             let url = URLBuilder.about(repositoryPath: repositoryPath)
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             return try aboutParser.parse(html: html)
         } catch {
             self.error = error
@@ -203,13 +209,13 @@ class GitService: ObservableObject {
         }
     }
     
-    func fetchDiff(repositoryPath: String, sha: String) async throws -> [DiffFile] {
+    func fetchDiff(repositoryPath: String, sha: String) async throws -> [GitHTMLParser.DiffFile] {
         isLoading = true
         defer { isLoading = false }
         
         do {
             let url = URLBuilder.diff(repositoryPath: repositoryPath, sha: sha)
-            let html = try await networkService.fetchHTML(from: url)
+            let html = try await requestManager.fetchHTML(from: url)
             return try diffParser.parse(html: html)
         } catch {
             self.error = error
@@ -226,9 +232,19 @@ class GitService: ObservableObject {
             let plainUrl = URLBuilder.plain(repositoryPath: repositoryPath, path: path, sha: sha)
             
             do {
-                let data = try await networkService.fetchData(from: plainUrl)
+                print("GitService: Fetching file content for: \(path)")
+                print("GitService: Plain URL: \(plainUrl)")
+                let data = try await requestManager.fetchData(from: plainUrl)
+                print("GitService: Received data: \(data.count) bytes")
+                
                 let content = String(data: data, encoding: .utf8) ?? ""
                 let isBinary = content.isEmpty && data.count > 0
+                
+                if isBinary {
+                    print("GitService: Detected binary file (no UTF-8 content but \(data.count) bytes)")
+                } else {
+                    print("GitService: Decoded text content: \(content.count) characters")
+                }
                 
                 return FileContent(
                     path: path,
@@ -239,9 +255,17 @@ class GitService: ObservableObject {
                 )
             } catch {
                 // If plain fails, try parsing the blob HTML page
+                print("GitService: Plain fetch failed with error: \(error)")
+                print("GitService: Trying blob HTML for: \(path)")
+                
                 let blobUrl = URLBuilder.blob(repositoryPath: repositoryPath, path: path, sha: sha)
-                let html = try await networkService.fetchHTML(from: blobUrl)
+                print("GitService: Blob URL: \(blobUrl)")
+                
+                let html = try await requestManager.fetchHTML(from: blobUrl)
+                print("GitService: Received HTML: \(html.count) characters")
+                
                 let fileInfo = try fileContentParser.parse(html: html)
+                print("GitService: Parsed file info - content: \(fileInfo.content.count) chars, binary: \(fileInfo.isBinary)")
                 
                 return FileContent(
                     path: fileInfo.path,

@@ -14,8 +14,8 @@ public struct AboutContent {
 public class AboutParser: BaseParser, HTMLParserProtocol {
     public typealias Output = AboutContent
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "AboutParser")
     }
     
     public func parse(html: String) throws -> AboutContent {

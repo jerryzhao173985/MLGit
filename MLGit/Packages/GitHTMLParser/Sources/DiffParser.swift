@@ -65,19 +65,28 @@ public struct DiffLine {
 public class DiffParser: BaseParser, HTMLParserProtocol {
     public typealias Output = [DiffFile]
     
-    public override init() {
-        super.init()
+    public init() {
+        super.init(parserName: "DiffParser")
     }
     
     public func parse(html: String) throws -> [DiffFile] {
         let doc = try parseDocument(html)
         
+        print("DiffParser: Starting to parse HTML document")
+        
+        // HTML logging handled by the service layer
+        
         // Check if this is a formatted diff view or raw patch
-        if let diffContent = try doc.select("div.content").first() {
+        if let _ = try doc.select("div.content").first() {
+            print("DiffParser: Found div.content, parsing as formatted diff")
             return try parseFormattedDiff(doc: doc)
-        } else {
-            // Parse as raw patch text
+        } else if html.contains("diff --git") {
+            print("DiffParser: No div.content found, parsing as raw patch text")
             return parsePatchText(html)
+        } else {
+            print("DiffParser: Attempting to parse as cgit diff table")
+            // Try parsing cgit's table-based diff format
+            return try parseCgitDiff(doc: doc)
         }
     }
     
@@ -125,9 +134,54 @@ public class DiffParser: BaseParser, HTMLParserProtocol {
         return DiffFile(oldPath: oldPath, newPath: newPath, changeType: changeType, hunks: hunks)
     }
     
+    private func parseCgitDiff(doc: Document) throws -> [DiffFile] {
+        var files: [DiffFile] = []
+        
+        // Look for any table that might contain diff data
+        let tables = try doc.select("table").array()
+        print("DiffParser: Found \(tables.count) tables in cgit diff")
+        
+        for table in tables {
+            // Skip navigation tables
+            let className = (try? table.className()) ?? ""
+            if className.contains("tabs") || className.contains("list") {
+                continue
+            }
+            
+            print("DiffParser: Checking table with class: '\(className)'")
+            
+            // Check if this table contains diff content
+            let hasLineNumbers = try table.select("td.linenumbers").count > 0
+            let hasHunkHeader = try table.select("tr.hunk").count > 0
+            let hasDiffContent = try table.html().contains("+") || table.html().contains("-")
+            
+            if hasLineNumbers || hasHunkHeader || hasDiffContent {
+                print("DiffParser: Found diff table (lineNumbers: \(hasLineNumbers), hunk: \(hasHunkHeader), diff: \(hasDiffContent))")
+                if let file = try parseDiffTable(table) {
+                    files.append(file)
+                }
+            }
+        }
+        
+        // If no tables found, try looking for pre-formatted diff content
+        if files.isEmpty {
+            let preElements = try doc.select("pre").array()
+            print("DiffParser: No diff tables found, checking \(preElements.count) pre elements")
+            
+            for pre in preElements {
+                let content = try pre.text()
+                if content.contains("diff --git") || content.contains("@@") {
+                    print("DiffParser: Found diff content in pre element")
+                    return parsePatchText(content)
+                }
+            }
+        }
+        
+        return files
+    }
+    
     private func parseDiffTable(_ table: Element) throws -> DiffFile? {
         // cgit uses tables for diff display
-        var lines: [DiffLine] = []
         let rows = try table.select("tr").array()
         
         var currentHunk: DiffHunk?
@@ -195,9 +249,142 @@ public class DiffParser: BaseParser, HTMLParserProtocol {
             ))
         }
         
-        // Extract file name from somewhere in the table
-        let fileName = "unknown" // Would need to find where cgit puts this
+        // Extract filename from the table or surrounding context
+        let fileName = try extractFileName(from: table)
         return DiffFile(oldPath: nil, newPath: fileName, changeType: .modified, hunks: hunks)
+    }
+    
+    private func extractFileName(from table: Element) throws -> String {
+        // Strategy 1: Look for cgit's specific div.path breadcrumb
+        if let doc = table.ownerDocument() {
+            if let pathDiv = try doc.select("div.path").first() {
+                let pathText = try pathDiv.text()
+                print("DiffParser: Found cgit path div: '\(pathText)'")
+                
+                // Extract the file path from breadcrumb (e.g., "root / path / to / file.txt")
+                let components = pathText
+                    .replacingOccurrences(of: " / ", with: "/")
+                    .split(separator: "/")
+                    .dropFirst() // Remove "root" or repo name
+                
+                if !components.isEmpty {
+                    let filePath = components.joined(separator: "/")
+                    print("DiffParser: Extracted file path from breadcrumb: '\(filePath)'")
+                    return filePath
+                }
+            }
+            
+            // Strategy 2: Look for filename in page title
+            if let title = try doc.select("title").first() {
+                let titleText = try title.text()
+                print("DiffParser: Found title: '\(titleText)'")
+                
+                // cgit titles often have format: "filename - repo - cgit"
+                if let firstDash = titleText.firstIndex(of: "-") {
+                    let filename = titleText[..<firstDash].trimmingCharacters(in: .whitespaces)
+                    if !filename.isEmpty && filename != "cgit" {
+                        print("DiffParser: Extracted filename from title: '\(filename)'")
+                        return filename
+                    }
+                }
+            }
+        }
+        
+        // Strategy 3: Look for div.header or any header before the table
+        if let parent = table.parent() {
+            // Check all previous siblings and parent's children for headers
+            let allElements = try parent.children().array()
+            if let tableIndex = allElements.firstIndex(of: table) {
+                // Look backwards from the table
+                for i in stride(from: tableIndex - 1, through: 0, by: -1) {
+                    let element = allElements[i]
+                    let tagName = element.tagName()
+                    
+                    if tagName == "div" || tagName.hasPrefix("h") {
+                        let text = try element.text()
+                        print("DiffParser: Found header element '\(tagName)': '\(text)'")
+                        
+                        if let filename = extractFileNameFromHeader(text) {
+                            return filename
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Strategy 4: Look for links in the table that might contain the filename
+        let links = try table.select("a").array()
+        for link in links {
+            let href = try link.attr("href")
+            if href.contains("/blob/") || href.contains("/tree/") {
+                print("DiffParser: Found file link: '\(href)'")
+                
+                // Extract path after blob/ or tree/
+                if let range = href.range(of: "/blob/") {
+                    let pathPart = String(href[range.upperBound...])
+                    if let queryIndex = pathPart.firstIndex(of: "?") {
+                        let path = String(pathPart[..<queryIndex])
+                        if !path.isEmpty {
+                            print("DiffParser: Extracted path from blob link: '\(path)'")
+                            return path
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Default fallback
+        print("DiffParser: Could not extract filename, using 'unknown'")
+        return "unknown"
+    }
+    
+    private func extractFileNameFromHeader(_ text: String) -> String? {
+        // Common patterns in cgit headers:
+        // "diff --git a/path/to/file b/path/to/file"
+        // "path/to/file"
+        // "--- a/path/to/file"
+        // "+++ b/path/to/file"
+        
+        // Pattern 1: git diff format
+        if text.contains("diff --git") {
+            let pattern = #"diff --git a/(.*?) b/"#
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+               let range = Range(match.range(at: 1), in: text) {
+                return String(text[range])
+            }
+        }
+        
+        // Pattern 2: --- or +++ format
+        if text.hasPrefix("---") || text.hasPrefix("+++") {
+            let components = text.split(separator: " ")
+            if components.count >= 2 {
+                let path = String(components[1])
+                // Remove leading a/ or b/
+                if path.hasPrefix("a/") || path.hasPrefix("b/") {
+                    return String(path.dropFirst(2))
+                }
+                return path
+            }
+        }
+        
+        // Pattern 3: Just a path
+        if !text.contains(" ") && text.contains("/") {
+            return text
+        }
+        
+        // Pattern 4: Extract last path component from any text
+        let words = text.split(separator: " ")
+        for word in words {
+            if word.contains("/") && !word.hasPrefix("http") {
+                let components = word.split(separator: "/")
+                if let last = components.last {
+                    return String(last)
+                }
+            }
+        }
+        
+        return nil
     }
     
     private func parseHunk(_ hunkElement: Element) throws -> DiffHunk? {
@@ -343,24 +530,61 @@ public class DiffParser: BaseParser, HTMLParserProtocol {
     
     private func parseFileHeader(_ header: String) -> (oldPath: String?, newPath: String, changeType: DiffFile.ChangeType) {
         // Parse headers like "diff --git a/file.txt b/file.txt"
-        let parts = header.components(separatedBy: " ")
+        print("DiffParser: Parsing file header: '\(header)'")
+        
         var oldPath: String?
         var newPath = "unknown"
         var changeType: DiffFile.ChangeType = .modified
         
-        if parts.count >= 4 {
-            oldPath = String(parts[2].dropFirst(2)) // Remove "a/"
-            newPath = String(parts[3].dropFirst(2)) // Remove "b/"
-            
-            if header.contains("new file") {
-                changeType = .added
-            } else if header.contains("deleted file") {
-                changeType = .deleted
-            } else if header.contains("rename") {
-                changeType = .renamed
+        // Try to extract paths using regex for more robust parsing
+        if header.contains("diff --git") {
+            // Pattern: diff --git a/path/to/file b/path/to/file
+            let pattern = #"diff --git a/(.*?) b/(.*?)(?:\s|$)"#
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let match = regex.firstMatch(in: header, range: NSRange(header.startIndex..., in: header)) {
+                
+                if let oldRange = Range(match.range(at: 1), in: header),
+                   let newRange = Range(match.range(at: 2), in: header) {
+                    oldPath = String(header[oldRange])
+                    newPath = String(header[newRange])
+                    print("DiffParser: Extracted paths - old: '\(oldPath ?? "nil")', new: '\(newPath)'")
+                }
+            }
+        } else {
+            // Fallback: Simple space-based parsing
+            let parts = header.components(separatedBy: " ")
+            if parts.count >= 4 {
+                let oldCandidate = parts[2]
+                let newCandidate = parts[3]
+                
+                // Remove a/ or b/ prefix if present
+                if oldCandidate.hasPrefix("a/") {
+                    oldPath = String(oldCandidate.dropFirst(2))
+                } else {
+                    oldPath = oldCandidate
+                }
+                
+                if newCandidate.hasPrefix("b/") {
+                    newPath = String(newCandidate.dropFirst(2))
+                } else {
+                    newPath = newCandidate
+                }
             }
         }
         
+        // Detect change type
+        if header.contains("new file") {
+            changeType = .added
+            oldPath = nil // New files don't have an old path
+        } else if header.contains("deleted file") {
+            changeType = .deleted
+        } else if header.contains("rename") {
+            changeType = .renamed
+        } else if header.contains("copy") {
+            changeType = .copied
+        }
+        
+        print("DiffParser: Final result - changeType: \(changeType), newPath: '\(newPath)'")
         return (oldPath, newPath, changeType)
     }
     

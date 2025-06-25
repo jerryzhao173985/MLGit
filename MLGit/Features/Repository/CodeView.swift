@@ -28,15 +28,15 @@ struct CodeView: View {
             ForEach(viewModel.files) { file in
                 if file.isDirectory {
                     Button(action: { navigateToDirectory(file) }) {
-                        FileRowView(file: file)
+                        FileRowView(file: file, showChevron: true)
                     }
                     .foregroundColor(.primary)
                 } else {
-                    NavigationLink(destination: FileDetailView(
+                    NavigationLink(destination: EnhancedFileDetailView(
                         repositoryPath: repositoryPath,
-                        filePath: file.path
+                        filePath: currentPath.isEmpty ? file.path : currentPath.joined(separator: "/") + "/" + file.path
                     )) {
-                        FileRowView(file: file)
+                        FileRowView(file: file, showChevron: false)
                     }
                 }
             }
@@ -77,6 +77,7 @@ struct CodeView: View {
 
 struct FileRowView: View {
     let file: FileNode
+    let showChevron: Bool
     
     var body: some View {
         HStack {
@@ -97,7 +98,7 @@ struct FileRowView: View {
             
             Spacer()
             
-            if file.isDirectory {
+            if showChevron {
                 Image(systemName: "chevron.right")
                     .font(.caption)
                     .foregroundColor(.secondary)
