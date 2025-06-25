@@ -17,10 +17,20 @@ struct FileDetailView: View {
     }
     
     var body: some View {
-        Group {
+        ZStack {
+            Color(UIColor.systemBackground)
+                .ignoresSafeArea()
+            
             if viewModel.isLoading {
                 ProgressView("Loading file...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = viewModel.error {
+                ContentUnavailableView(
+                    "Unable to Load File",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error.localizedDescription)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let content = viewModel.fileContent {
                 if content.isBinary {
                     VStack(spacing: 20) {
@@ -35,12 +45,24 @@ struct FileDetailView: View {
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if content.content.isEmpty {
+                    ContentUnavailableView(
+                        "Empty File",
+                        systemImage: "doc",
+                        description: Text("This file has no content")
+                    )
                 } else {
                     ScrollView([.horizontal, .vertical]) {
                         FileCodeView(content: content.content, fontSize: fontSize)
                             .padding()
                     }
                 }
+            } else {
+                ContentUnavailableView(
+                    "No Content",
+                    systemImage: "doc.questionmark",
+                    description: Text("Unable to display file content")
+                )
             }
         }
         .navigationTitle(URL(string: filePath)?.lastPathComponent ?? filePath)

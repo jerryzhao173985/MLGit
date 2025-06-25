@@ -151,7 +151,7 @@ struct CodeFileView: View {
         .onAppear {
             highlightCode()
         }
-        .onChange(of: theme) { _ in
+        .onChange(of: theme) { _, _ in
             highlightCode()
         }
     }

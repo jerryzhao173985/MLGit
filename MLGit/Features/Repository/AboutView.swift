@@ -17,13 +17,14 @@ struct AboutView: View {
         ScrollView {
             if viewModel.isLoading && viewModel.aboutContent == nil {
                 LoadingStateView(title: "Loading README...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let error = viewModel.error {
                 ErrorStateView(error: error) {
                     Task {
                         await viewModel.loadAboutContent()
                     }
                 }
-            } else if let aboutContent = viewModel.aboutContent {
+            } else if let aboutContent = viewModel.aboutContent, !aboutContent.htmlContent.isEmpty {
                 VStack(alignment: .leading, spacing: 20) {
                     HTMLView(htmlContent: aboutContent.htmlContent)
                         .frame(minHeight: 300)
@@ -79,12 +80,21 @@ struct HTMLView: UIViewRepresentable {
     let htmlContent: String
     
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView()
+        let preferences = WKPreferences()
+        preferences.javaScriptEnabled = false // Disable JS for security
+        
+        let configuration = WKWebViewConfiguration()
+        configuration.preferences = preferences
+        configuration.allowsInlineMediaPlayback = false
+        
+        let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
-        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.isScrollEnabled = true // Enable scrolling
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        webView.scrollView.showsVerticalScrollIndicator = true
+        webView.scrollView.showsHorizontalScrollIndicator = false
         return webView
     }
     
@@ -177,13 +187,8 @@ struct HTMLView: UIViewRepresentable {
         }
         
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            webView.evaluateJavaScript("document.body.scrollHeight") { height, _ in
-                if let height = height as? CGFloat {
-                    DispatchQueue.main.async {
-                        webView.frame.size.height = height
-                    }
-                }
-            }
+            // Don't try to adjust height - let SwiftUI handle it
+            // This was causing freezing issues
         }
     }
 }

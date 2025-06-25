@@ -1,29 +1,60 @@
 import SwiftUI
 
 struct TestEnhancementsView: View {
+    @StateObject private var themeManager = ThemeManager.shared
+    
     var body: some View {
         NavigationView {
             List {
-                Section("Test Enhanced Views") {
-                    NavigationLink("Test Diff View") {
+                Section("Current Implementations") {
+                    NavigationLink("Test Enhanced Diff View") {
                         EnhancedDiffView(
                             repositoryPath: "tosa/reference_model.git",
                             commitSHA: "cd167baf693b155805622e340008388cc89f61b2"
                         )
                     }
                     
-                    NavigationLink("Test File View (README)") {
+                    NavigationLink("Test Enhanced File View (README)") {
                         EnhancedFileDetailView(
                             repositoryPath: "tosa/reference_model.git",
                             filePath: "README.md"
                         )
                     }
                     
-                    NavigationLink("Test File View (Code)") {
+                    NavigationLink("Test Enhanced File View (Code)") {
                         EnhancedFileDetailView(
                             repositoryPath: "tosa/reference_model.git",
                             filePath: "reference_model_src/ops/ewise_unary.cc"
                         )
+                    }
+                }
+                
+                Section("New Enhanced Components") {
+                    NavigationLink("Test Advanced Diff View") {
+                        AdvancedDiffView(
+                            repositoryPath: "tosa/reference_model.git",
+                            commitSHA: "cd167baf693b155805622e340008388cc89f61b2"
+                        )
+                    }
+                    
+                    NavigationLink("Test Enhanced Markdown") {
+                        EnhancedMarkdownView(
+                            content: sampleMarkdown
+                        )
+                        .navigationTitle("Enhanced Markdown")
+                    }
+                    
+                    NavigationLink("Test Runestone Code View") {
+                        RunestoneCodeViewWrapper(
+                            content: sampleSwiftCode,
+                            language: "swift",
+                            fileName: "SampleCode.swift"
+                        )
+                        .navigationTitle("Runestone Code View")
+                    }
+                    
+                    NavigationLink("Test Theme System") {
+                        ThemeTestView()
                     }
                 }
                 
@@ -46,10 +77,91 @@ struct TestEnhancementsView: View {
                         }
                     }
                 }
+                
+                Section("Debug Tools") {
+                    NavigationLink("Debug File View (README)") {
+                        DebugFileView(
+                            repositoryPath: "tosa/reference_model.git",
+                            filePath: "README.md"
+                        )
+                    }
+                    
+                    NavigationLink("Debug File View (Code)") {
+                        DebugFileView(
+                            repositoryPath: "tosa/reference_model.git",
+                            filePath: "reference_model_src/ops/ewise_unary.cc"
+                        )
+                    }
+                    
+                    NavigationLink("Debug About View") {
+                        AboutView(repositoryPath: "tosa/reference_model.git")
+                    }
+                }
             }
             .navigationTitle("Test Enhancements")
         }
+        .environmentObject(themeManager)
+        .environment(\.codeTheme, themeManager.currentTheme)
     }
+    
+    // Sample Swift code for testing
+    private let sampleSwiftCode = """
+    import SwiftUI
+    import Combine
+    
+    /// A sample view model demonstrating various Swift features
+    @MainActor
+    class SampleViewModel: ObservableObject {
+        @Published var items: [Item] = []
+        @Published var isLoading = false
+        @Published var error: Error?
+        
+        private var cancellables = Set<AnyCancellable>()
+        private let service: DataService
+        
+        init(service: DataService = .shared) {
+            self.service = service
+            setupBindings()
+        }
+        
+        private func setupBindings() {
+            $items
+                .debounce(for: .seconds(0.5), scheduler: RunLoop.main)
+                .sink { [weak self] items in
+                    self?.processItems(items)
+                }
+                .store(in: &cancellables)
+        }
+        
+        func loadData() async {
+            isLoading = true
+            defer { isLoading = false }
+            
+            do {
+                let response = try await service.fetchItems()
+                await MainActor.run {
+                    self.items = response.items
+                }
+            } catch {
+                self.error = error
+            }
+        }
+        
+        private func processItems(_ items: [Item]) {
+            // Complex processing logic
+            let filtered = items.filter { $0.isValid }
+            let sorted = filtered.sorted { $0.priority > $1.priority }
+            print("Processed \\(sorted.count) items")
+        }
+    }
+    
+    struct Item: Identifiable {
+        let id = UUID()
+        var name: String
+        var priority: Int
+        var isValid: Bool
+    }
+    """
 }
 
 private let sampleMarkdown = """
