@@ -52,7 +52,7 @@ struct FileNode: Identifiable, Codable {
     }
 }
 
-struct FileContent: Codable {
+struct FileContent: Codable, Equatable {
     let path: String
     let content: String
     let size: Int64

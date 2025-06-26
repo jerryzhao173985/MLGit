@@ -35,10 +35,19 @@ class CacheManager: ObservableObject {
     // MARK: - Public Methods
     
     func cacheHTML(_ html: String, for url: URL) async {
-        let key = cacheKey(for: url)
+        guard let data = html.data(using: .utf8) else {
+            print("CacheManager: Failed to encode HTML to UTF-8 for URL: \(url)")
+            return
+        }
+        
+        guard let key = cacheKey(for: url) else {
+            print("CacheManager: Failed to generate cache key for URL: \(url)")
+            return
+        }
+        
         let policy = CachePolicy.policy(for: url)
         let entry = PolicyCacheEntry(
-            data: html.data(using: .utf8)!,
+            data: data,
             timestamp: Date(),
             policy: policy
         )
@@ -48,14 +57,21 @@ class CacheManager: ObservableObject {
         
         // Disk cache
         let fileURL = cacheFileURL(for: key)
-        try? entry.data.write(to: fileURL)
+        do {
+            try entry.data.write(to: fileURL)
+        } catch {
+            print("CacheManager: Failed to write cache to disk: \(error)")
+        }
         
         // Save metadata with policy
         saveCacheMetadata(for: key, timestamp: entry.timestamp, policy: policy)
     }
     
     func getCachedHTML(for url: URL) async -> String? {
-        let key = cacheKey(for: url)
+        guard let key = cacheKey(for: url) else {
+            print("CacheManager: Failed to generate cache key for URL: \(url)")
+            return nil
+        }
         
         // Check memory cache first
         if let entry = memoryCache.object(forKey: key as NSString) {
@@ -209,8 +225,13 @@ class CacheManager: ObservableObject {
     
     // MARK: - Private Methods
     
-    private func cacheKey(for url: URL) -> String {
-        return url.absoluteString.data(using: .utf8)!.base64EncodedString()
+    private func cacheKey(for url: URL) -> String? {
+        guard let data = url.absoluteString.data(using: .utf8) else {
+            print("CacheManager: Failed to encode URL to UTF-8: \(url)")
+            return nil
+        }
+        
+        return data.base64EncodedString()
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "+", with: "-")
     }

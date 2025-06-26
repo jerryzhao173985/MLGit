@@ -40,8 +40,8 @@ final class RequestManager {
         let task = Task<String, Error> {
             defer {
                 // Clean up when done
-                Task { @MainActor in
-                    self.activeFetches.removeValue(forKey: key)
+                Task { @MainActor [weak self] in
+                    self?.activeFetches.removeValue(forKey: key)
                 }
             }
             
@@ -87,8 +87,8 @@ final class RequestManager {
         let task = Task<Data, Error> {
             defer {
                 // Clean up when done
-                Task { @MainActor in
-                    self.activeRequests.removeValue(forKey: key)
+                Task { @MainActor [weak self] in
+                    self?.activeRequests.removeValue(forKey: key)
                 }
             }
             
@@ -97,8 +97,8 @@ final class RequestManager {
                 return data
             } catch {
                 // Remove from active requests on error
-                await MainActor.run {
-                    self.activeRequests.removeValue(forKey: key)
+                await MainActor.run { [weak self] in
+                    self?.activeRequests.removeValue(forKey: key)
                 }
                 throw error
             }

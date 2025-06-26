@@ -184,7 +184,14 @@ struct DebugFileView: View {
     
     private func loadFile() async {
         debugInfo = "Starting file load...\n"
+        
+        // Force a small delay to ensure UI updates
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        
         await viewModel.loadFile()
+        
+        // Another small delay to ensure state is updated
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
         
         if let error = viewModel.error {
             debugInfo += "Error: \(error)\n"

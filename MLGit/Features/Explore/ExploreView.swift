@@ -31,7 +31,7 @@ struct ExploreView: View {
                 }
             }
         }
-        .refreshable {
+        .refreshableWithHaptic {
             await viewModel.loadProjects()
         }
         .task {
@@ -57,8 +57,9 @@ struct ExploreView: View {
             NoConnectionView()
                 .listRowSeparator(.hidden)
         } else if viewModel.isLoading && viewModel.projects.isEmpty {
-            LoadingSkeletonView()
+            RepositoryListSkeletonView()
                 .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
         } else if let error = viewModel.error {
             ErrorStateView(error: error) {
                 Task {
@@ -87,10 +88,11 @@ struct ExploreView: View {
     
     private var projectsList: some View {
         ForEach(filteredProjects) { project in
-            NavigationLink(destination: RepositoryView(repositoryPath: project.path)) {
+            NavigationLink(destination: LazyRepositoryView(repositoryPath: project.path)) {
                 ProjectRowView(project: project)
             }
             .disabled(viewModel.isLoading)
+            .listRowHaptic()
         }
     }
     

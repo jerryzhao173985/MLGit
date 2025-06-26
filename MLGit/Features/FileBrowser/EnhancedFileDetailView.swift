@@ -27,30 +27,68 @@ struct EnhancedFileDetailView: View {
             Color(UIColor.systemBackground)
                 .ignoresSafeArea()
             
+            let _ = print("EnhancedFileDetailView: isLoading=\(viewModel.isLoading), hasError=\(viewModel.error != nil), hasContent=\(viewModel.fileContent != nil)")
+            
             if viewModel.isLoading {
                 ProgressView("Loading file...")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = viewModel.error {
+                ContentUnavailableView(
+                    "Error Loading File",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text(error.localizedDescription)
+                )
             } else if let content = viewModel.fileContent {
-                if content.isBinary {
+                let _ = print("EnhancedFileDetailView: Displaying content - isBinary: \(content.isBinary), isMarkdown: \(isMarkdownFile), isImage: \(isImageFile), contentLength: \(content.content.count)")
+                
+                // Check for empty content
+                if content.content.isEmpty && !content.isBinary {
+                    if content.size > 0 {
+                        // File has content but couldn't be decoded
+                        ContentUnavailableView(
+                            "Encoding Issue",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text("Unable to decode file with encoding: \(content.encoding)\nFile size: \(content.size) bytes")
+                        )
+                    } else {
+                        // File is genuinely empty
+                        ContentUnavailableView(
+                            "Empty File",
+                            systemImage: "doc",
+                            description: Text("This file contains no content")
+                        )
+                    }
+                } else if content.isBinary {
                     BinaryFileView(fileContent: content)
                 } else if isMarkdownFile {
                     MarkdownFileView(content: content.content, fontSize: fontSize)
+                } else if isImageFile {
+                    // Display image files
+                    ImageFileView(
+                        content: content,
+                        filePath: content.path
+                    )
                 } else {
-                    CodeFileView(
+                    // Use optimized code view for all code files
+                    let detectedLanguage = Self.detectLanguage(from: filePath) ?? "text"
+                    let _ = print("EnhancedFileDetailView: Using OptimizedCodeView with language: \(detectedLanguage)")
+                    
+                    OptimizedCodeView(
                         content: content.content,
-                        filePath: filePath,
+                        language: detectedLanguage,
                         fontSize: fontSize,
                         theme: theme,
                         showLineNumbers: showLineNumbers,
                         wrapLines: wrapLines,
+                        searchText: "",
                         highlightr: highlightr
                     )
                 }
             } else {
                 ContentUnavailableView(
-                    "Unable to Load File",
+                    "No Content",
                     systemImage: "doc.questionmark",
-                    description: Text("The file could not be loaded")
+                    description: Text("File content is empty or could not be loaded")
                 )
             }
         }
@@ -96,7 +134,15 @@ struct EnhancedFileDetailView: View {
             }
         }
         .task {
+            print("EnhancedFileDetailView: task started for \(filePath)")
             await viewModel.loadFile()
+            print("EnhancedFileDetailView: task completed")
+        }
+        .onChange(of: viewModel.fileContent) { _, newValue in
+            print("EnhancedFileDetailView: content changed - hasContent: \(newValue != nil)")
+        }
+        .onAppear {
+            print("EnhancedFileDetailView: appeared for \(filePath)")
         }
         .alert("Error", isPresented: .constant(viewModel.error != nil)) {
             Button("OK") {
@@ -114,6 +160,61 @@ struct EnhancedFileDetailView: View {
     private var isMarkdownFile: Bool {
         let lowercased = fileName.lowercased()
         return lowercased.hasSuffix(".md") || lowercased.hasSuffix(".markdown")
+    }
+    
+    private var isImageFile: Bool {
+        let lowercased = fileName.lowercased()
+        return lowercased.hasSuffix(".png") || lowercased.hasSuffix(".jpg") || 
+               lowercased.hasSuffix(".jpeg") || lowercased.hasSuffix(".gif") || 
+               lowercased.hasSuffix(".svg") || lowercased.hasSuffix(".webp")
+    }
+    
+    static func detectLanguage(from path: String) -> String? {
+        let filename = (path as NSString).lastPathComponent.lowercased()
+        
+        // Handle special files without extensions
+        switch filename {
+        case ".gitignore": return "gitignore"
+        case ".gitmodules": return "gitconfig"
+        case ".gitconfig": return "gitconfig"
+        case ".bashrc", ".bash_profile": return "bash"
+        case "dockerfile": return "dockerfile"
+        case "makefile", "gnumakefile": return "makefile"
+        case "podfile": return "ruby"
+        case "gemfile": return "ruby"
+        default: break
+        }
+        
+        // Handle file extensions
+        let ext = (path as NSString).pathExtension.lowercased()
+        
+        switch ext {
+        case "swift": return "swift"
+        case "m", "mm": return "objectivec"
+        case "h", "hpp": return "cpp"
+        case "c": return "c"
+        case "cpp", "cc", "cxx": return "cpp"
+        case "js": return "javascript"
+        case "ts": return "typescript"
+        case "py": return "python"
+        case "rb": return "ruby"
+        case "java": return "java"
+        case "kt", "kts": return "kotlin"
+        case "go": return "go"
+        case "rs": return "rust"
+        case "php": return "php"
+        case "sh", "bash": return "bash"
+        case "json": return "json"
+        case "xml": return "xml"
+        case "html", "htm": return "html"
+        case "css": return "css"
+        case "scss", "sass": return "scss"
+        case "sql": return "sql"
+        case "yml", "yaml": return "yaml"
+        case "toml": return "toml"
+        case "md", "markdown": return "markdown"
+        default: return nil
+        }
     }
 }
 
@@ -162,7 +263,7 @@ struct CodeFileView: View {
         highlightr.setTheme(to: theme)
         
         // Detect language from file extension
-        let language = detectLanguage(from: filePath)
+        let language = EnhancedFileDetailView.detectLanguage(from: filePath)
         if let highlighted = highlightr.highlight(content, as: language) {
             attributedText = highlighted
         } else {
@@ -170,38 +271,6 @@ struct CodeFileView: View {
             if let highlighted = highlightr.highlight(content) {
                 attributedText = highlighted
             }
-        }
-    }
-    
-    private func detectLanguage(from path: String) -> String? {
-        let ext = (path as NSString).pathExtension.lowercased()
-        
-        switch ext {
-        case "swift": return "swift"
-        case "m", "mm": return "objectivec"
-        case "h", "hpp": return "cpp"
-        case "c": return "c"
-        case "cpp", "cc", "cxx": return "cpp"
-        case "js": return "javascript"
-        case "ts": return "typescript"
-        case "py": return "python"
-        case "rb": return "ruby"
-        case "java": return "java"
-        case "kt", "kts": return "kotlin"
-        case "go": return "go"
-        case "rs": return "rust"
-        case "php": return "php"
-        case "sh", "bash": return "bash"
-        case "json": return "json"
-        case "xml": return "xml"
-        case "html", "htm": return "html"
-        case "css": return "css"
-        case "scss", "sass": return "scss"
-        case "sql": return "sql"
-        case "yml", "yaml": return "yaml"
-        case "toml": return "toml"
-        case "md", "markdown": return "markdown"
-        default: return nil
         }
     }
 }

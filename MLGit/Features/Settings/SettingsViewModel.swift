@@ -57,18 +57,18 @@ class SettingsViewModel: ObservableObject {
     }
     
     private func calculateCacheSize() {
-        Task {
+        Task { [weak self] in
             let fileManager = FileManager.default
             let cacheDirectory = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first!
             
             do {
-                let size = try await calculateDirectorySize(at: cacheDirectory)
-                await MainActor.run {
-                    self.cacheSize = formatBytes(size)
+                let size = try await self?.calculateDirectorySize(at: cacheDirectory) ?? 0
+                await MainActor.run { [weak self] in
+                    self?.cacheSize = self?.formatBytes(size) ?? "0 B"
                 }
             } catch {
-                await MainActor.run {
-                    self.cacheSize = "Unknown"
+                await MainActor.run { [weak self] in
+                    self?.cacheSize = "Unknown"
                 }
             }
         }

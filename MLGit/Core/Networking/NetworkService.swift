@@ -20,6 +20,11 @@ class NetworkService: NetworkServiceProtocol {
         diskPath: "com.mlgit.cache"
     )
     
+    // Request deduplication
+    private var inFlightHTMLRequests: [URL: Task<String, Error>] = [:]
+    private var inFlightDataRequests: [URL: Task<Data, Error>] = [:]
+    private let requestLock = NSLock()
+    
     private init() {
         let configuration = URLSessionConfiguration.default
         configuration.urlCache = cache
@@ -43,50 +48,84 @@ class NetworkService: NetworkServiceProtocol {
             return cachedHTML
         }
         
-        print("Fetching HTML from: \(url.absoluteString)")
-        
-        // Create request with explicit User-Agent
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 30
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NetworkError.invalidResponse
+        // Check for in-flight request
+        requestLock.lock()
+        if let existingTask = inFlightHTMLRequests[url] {
+            requestLock.unlock()
+            print("Request deduplication: Using existing request for: \(url.absoluteString)")
+            return try await existingTask.value
         }
         
-        guard (200...299).contains(httpResponse.statusCode) else {
-            print("NetworkService: HTTP error \(httpResponse.statusCode) for URL: \(url)")
+        // Create a new task for this request
+        let task = Task<String, Error> {
+            print("Fetching HTML from: \(url.absoluteString)")
             
-            // Log error response body for debugging
-            if let errorBody = String(data: data, encoding: .utf8) {
-                print("NetworkService: Error response body: \(errorBody)")
-                
-                // Log error HTML for debugging
-                Task {
-                    HTMLDebugLogger.shared.logHTML(errorBody, for: url, parserType: "NetworkService-Error-\(httpResponse.statusCode)")
-                }
+            // Create request with explicit User-Agent
+            var request = URLRequest(url: url)
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", forHTTPHeaderField: "User-Agent")
+            request.timeoutInterval = 30
+            
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NetworkError.invalidResponse
             }
             
-            throw NetworkError.httpError(httpResponse.statusCode)
+            guard (200...299).contains(httpResponse.statusCode) else {
+                print("NetworkService: HTTP error \(httpResponse.statusCode) for URL: \(url)")
+                
+                // Log error response body for debugging
+                if let errorBody = String(data: data, encoding: .utf8) {
+                    print("NetworkService: Error response body: \(errorBody)")
+                    
+                    // Log error HTML for debugging
+                    Task {
+                        HTMLDebugLogger.shared.logHTML(errorBody, for: url, parserType: "NetworkService-Error-\(httpResponse.statusCode)")
+                    }
+                }
+                
+                throw NetworkError.httpError(httpResponse.statusCode)
+            }
+            
+            guard let html = String(data: data, encoding: .utf8) else {
+                throw NetworkError.decodingError
+            }
+            
+            print("Successfully fetched HTML, size: \(data.count) bytes")
+            
+            // Log HTML for debugging if enabled
+            HTMLDebugLogger.shared.logHTML(html, for: url, parserType: "NetworkService")
+            
+            // Cache the response if caching is enabled
+            if useCache {
+                await CacheManager.shared.cacheHTML(html, for: url)
+            }
+            
+            return html
         }
         
-        guard let html = String(data: data, encoding: .utf8) else {
-            throw NetworkError.decodingError
+        // Store the task for deduplication
+        inFlightHTMLRequests[url] = task
+        requestLock.unlock()
+        
+        // Execute the task and clean up when done
+        do {
+            let result = try await task.value
+            
+            // Remove from in-flight requests
+            requestLock.lock()
+            inFlightHTMLRequests.removeValue(forKey: url)
+            requestLock.unlock()
+            
+            return result
+        } catch {
+            // Remove from in-flight requests even if it failed
+            requestLock.lock()
+            inFlightHTMLRequests.removeValue(forKey: url)
+            requestLock.unlock()
+            
+            throw error
         }
-        
-        print("Successfully fetched HTML, size: \(data.count) bytes")
-        
-        // Log HTML for debugging if enabled
-        HTMLDebugLogger.shared.logHTML(html, for: url, parserType: "NetworkService")
-        
-        // Cache the response if caching is enabled
-        if useCache {
-            await CacheManager.shared.cacheHTML(html, for: url)
-        }
-        
-        return html
     }
     
     func fetchData(from url: URL) async throws -> Data {
@@ -94,26 +133,60 @@ class NetworkService: NetworkServiceProtocol {
     }
     
     func fetchData(from url: URL, useCache: Bool) async throws -> Data {
-        // For binary data, we'll use URLCache instead of our custom cache
-        logger.debug("Fetching data from: \(url.absoluteString)")
-        
-        // Create request with explicit User-Agent
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", forHTTPHeaderField: "User-Agent")
-        request.timeoutInterval = 30
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NetworkError.invalidResponse
+        // Check for in-flight request
+        requestLock.lock()
+        if let existingTask = inFlightDataRequests[url] {
+            requestLock.unlock()
+            logger.debug("Request deduplication: Using existing data request for: \(url.absoluteString)")
+            return try await existingTask.value
         }
         
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw NetworkError.httpError(httpResponse.statusCode)
+        // Create a new task for this request
+        let task = Task<Data, Error> {
+            // For binary data, we'll use URLCache instead of our custom cache
+            logger.debug("Fetching data from: \(url.absoluteString)")
+            
+            // Create request with explicit User-Agent
+            var request = URLRequest(url: url)
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36", forHTTPHeaderField: "User-Agent")
+            request.timeoutInterval = 30
+            
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw NetworkError.invalidResponse
+            }
+            
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw NetworkError.httpError(httpResponse.statusCode)
+            }
+            
+            logger.debug("Successfully fetched data, size: \(data.count) bytes")
+            return data
         }
         
-        logger.debug("Successfully fetched data, size: \(data.count) bytes")
-        return data
+        // Store the task for deduplication
+        inFlightDataRequests[url] = task
+        requestLock.unlock()
+        
+        // Execute the task and clean up when done
+        do {
+            let result = try await task.value
+            
+            // Remove from in-flight requests
+            requestLock.lock()
+            inFlightDataRequests.removeValue(forKey: url)
+            requestLock.unlock()
+            
+            return result
+        } catch {
+            // Remove from in-flight requests even if it failed
+            requestLock.lock()
+            inFlightDataRequests.removeValue(forKey: url)
+            requestLock.unlock()
+            
+            throw error
+        }
     }
     
     func clearCache() {

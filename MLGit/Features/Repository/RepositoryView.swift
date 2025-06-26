@@ -60,7 +60,10 @@ struct RepositoryView: View {
                                     title: tab.title,
                                     icon: tab.icon,
                                     isSelected: selectedTab == tab.rawValue,
-                                    action: { selectedTab = tab.rawValue }
+                                    action: { 
+                                        selectedTab = tab.rawValue
+                                        HapticManager.shared.selectionChanged()
+                                    }
                                 )
                             }
                         }
@@ -145,6 +148,14 @@ struct RepositoryView: View {
             lastActivity: repository.lastUpdate,
             category: nil
         )
+        
+        // Add haptic feedback
+        if starredViewModel.isStarred(project) {
+            HapticManager.shared.lightImpact()
+        } else {
+            HapticManager.shared.notificationSuccess()
+        }
+        
         starredViewModel.toggleStarred(project)
     }
 }

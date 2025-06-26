@@ -32,7 +32,7 @@ struct StarredView: View {
                     }
                     
                     ForEach(viewModel.starredProjects) { project in
-                        NavigationLink(destination: RepositoryView(repositoryPath: project.path)) {
+                        NavigationLink(destination: LazyRepositoryView(repositoryPath: project.path)) {
                             StarredProjectRowView(project: project, viewModel: viewModel)
                         }
                         .onTapGesture {

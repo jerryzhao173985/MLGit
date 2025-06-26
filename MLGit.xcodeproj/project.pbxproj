@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		C408E93F2E0AF876008226AE /* GitHTMLParser in Frameworks */ = {isa = PBXBuildFile; productRef = C408E93E2E0AF876008226AE /* GitHTMLParser */; };
 		C408E9422E0AF892008226AE /* GitDiffUI in Frameworks */ = {isa = PBXBuildFile; productRef = C408E9412E0AF892008226AE /* GitDiffUI */; };
+		C4F01D7A2E0C3F5F002B80AF /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = C4F01D792E0C3F5F002B80AF /* MarkdownUI */; };
+		C4F01D8B2E0D24B6002B80AF /* Runestone in Frameworks */ = {isa = PBXBuildFile; productRef = C4F01D8A2E0D24B6002B80AF /* Runestone */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +43,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C4F01D8B2E0D24B6002B80AF /* Runestone in Frameworks */,
+				C4F01D7A2E0C3F5F002B80AF /* MarkdownUI in Frameworks */,
 				C408E9422E0AF892008226AE /* GitDiffUI in Frameworks */,
 				C408E93F2E0AF876008226AE /* GitHTMLParser in Frameworks */,
 			);
@@ -87,6 +91,8 @@
 			packageProductDependencies = (
 				C408E93E2E0AF876008226AE /* GitHTMLParser */,
 				C408E9412E0AF892008226AE /* GitDiffUI */,
+				C4F01D792E0C3F5F002B80AF /* MarkdownUI */,
+				C4F01D8A2E0D24B6002B80AF /* Runestone */,
 			);
 			productName = MLGit;
 			productReference = C413C4422E0AE53800FAAC69 /* MLGit.app */;
@@ -119,6 +125,8 @@
 			packageReferences = (
 				C408E93D2E0AF876008226AE /* XCLocalSwiftPackageReference "MLGit/Packages/GitHTMLParser" */,
 				C408E9402E0AF892008226AE /* XCLocalSwiftPackageReference "MLGit/Packages/GitDiffUI" */,
+				C4F01D782E0C3F5F002B80AF /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
+				C4F01D892E0D24B6002B80AF /* XCRemoteSwiftPackageReference "Runestone" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C413C4432E0AE53800FAAC69 /* Products */;
@@ -376,6 +384,25 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		C4F01D782E0C3F5F002B80AF /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/jerryzhao173985/swift-markdown-ui";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		C4F01D892E0D24B6002B80AF /* XCRemoteSwiftPackageReference "Runestone" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/simonbs/Runestone.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		C408E93E2E0AF876008226AE /* GitHTMLParser */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -384,6 +411,16 @@
 		C408E9412E0AF892008226AE /* GitDiffUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GitDiffUI;
+		};
+		C4F01D792E0C3F5F002B80AF /* MarkdownUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C4F01D782E0C3F5F002B80AF /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
+			productName = MarkdownUI;
+		};
+		C4F01D8A2E0D24B6002B80AF /* Runestone */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C4F01D892E0D24B6002B80AF /* XCRemoteSwiftPackageReference "Runestone" */;
+			productName = Runestone;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

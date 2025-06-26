@@ -28,8 +28,8 @@ class GitService: ObservableObject {
     @Published var isLoading = false
     @Published var error: Error?
     
-    private init(networkService: NetworkServiceProtocol = NetworkService.shared) {
-        self.networkService = networkService
+    private init(networkService: NetworkServiceProtocol? = nil) {
+        self.networkService = networkService ?? NetworkService.shared
     }
     
     func fetchProjects() async throws -> [Project] {
@@ -227,6 +227,11 @@ class GitService: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         
+        // Check if file extension indicates binary
+        let binaryExtensions = ["npy", "npz", "pkl", "pickle", "model", "h5", "hdf5", "mat", "bin", "dat", "db", "sqlite", "sqlite3", "tflite", "pb", "pth", "pt", "onnx", "caffemodel", "weights"]
+        let fileExtension = (path as NSString).pathExtension.lowercased()
+        let likelyBinaryByExtension = binaryExtensions.contains(fileExtension)
+        
         do {
             // Try to get the plain content first
             let plainUrl = URLBuilder.plain(repositoryPath: repositoryPath, path: path, sha: sha)
@@ -237,20 +242,55 @@ class GitService: ObservableObject {
                 let data = try await requestManager.fetchData(from: plainUrl)
                 print("GitService: Received data: \(data.count) bytes")
                 
-                let content = String(data: data, encoding: .utf8) ?? ""
-                let isBinary = content.isEmpty && data.count > 0
+                // Check if the file is binary by examining the data or extension
+                let isBinary = likelyBinaryByExtension || isLikelyBinary(data: data)
                 
-                if isBinary {
-                    print("GitService: Detected binary file (no UTF-8 content but \(data.count) bytes)")
+                var content = ""
+                var encoding = "UTF-8"
+                
+                if !isBinary {
+                    // Try multiple encodings for text files
+                    let encodings: [(String.Encoding, String)] = [
+                        (.utf8, "UTF-8"),
+                        (.utf16, "UTF-16"),
+                        (.utf16BigEndian, "UTF-16BE"),
+                        (.utf16LittleEndian, "UTF-16LE"),
+                        (.utf32, "UTF-32"),
+                        (.isoLatin1, "ISO-8859-1"),
+                        (.windowsCP1252, "Windows-1252"),
+                        (.macOSRoman, "Mac OS Roman"),
+                        (.ascii, "ASCII")
+                    ]
+                    
+                    for (enc, name) in encodings {
+                        if let decodedContent = String(data: data, encoding: enc) {
+                            content = decodedContent
+                            encoding = name
+                            print("GitService: Successfully decoded with \(name) encoding: \(content.count) characters")
+                            break
+                        }
+                    }
+                    
+                    // If all encodings fail, try ASCII with lossy conversion
+                    if content.isEmpty && data.count > 0 {
+                        print("GitService: All standard encodings failed, trying lossy ASCII conversion")
+                        content = String(data: data, encoding: .ascii) ?? 
+                                String(data.map { Character(UnicodeScalar($0)) })
+                        encoding = "ASCII (lossy)"
+                        print("GitService: Lossy conversion resulted in \(content.count) characters")
+                    }
                 } else {
-                    print("GitService: Decoded text content: \(content.count) characters")
+                    print("GitService: Detected binary file based on content analysis")
                 }
+                
+                // For binary files, encode the data as base64 for transport
+                let finalContent = isBinary ? data.base64EncodedString() : content
                 
                 return FileContent(
                     path: path,
-                    content: content,
+                    content: finalContent,
                     size: Int64(data.count),
-                    encoding: "UTF-8",
+                    encoding: isBinary ? "base64" : encoding,
                     isBinary: isBinary
                 )
             } catch {
@@ -279,6 +319,77 @@ class GitService: ObservableObject {
             self.error = error
             throw error
         }
+    }
+    
+    // Helper function to detect if data is likely binary
+    private func isLikelyBinary(data: Data) -> Bool {
+        // Empty files are not binary
+        if data.isEmpty {
+            return false
+        }
+        
+        // Check first 8192 bytes (or entire file if smaller)
+        let sampleSize = min(data.count, 8192)
+        let sample = data.prefix(sampleSize)
+        
+        // Count null bytes and control characters
+        var nullBytes = 0
+        var controlChars = 0
+        
+        for byte in sample {
+            if byte == 0 {
+                nullBytes += 1
+            } else if byte < 32 && byte != 9 && byte != 10 && byte != 13 {
+                // Control chars except tab, newline, carriage return
+                controlChars += 1
+            }
+        }
+        
+        // Check for common binary file signatures first
+        if data.count >= 8 {
+            let header = data.prefix(8)
+            
+            // PNG signature
+            if header.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+                print("GitService: Detected PNG file signature")
+                return true
+            }
+            
+            // JPEG signatures
+            if header.starts(with: [0xFF, 0xD8, 0xFF]) {
+                print("GitService: Detected JPEG file signature")
+                return true
+            }
+            
+            // GIF signatures
+            if header.starts(with: "GIF87a".data(using: .ascii)!) || 
+               header.starts(with: "GIF89a".data(using: .ascii)!) {
+                print("GitService: Detected GIF file signature")
+                return true
+            }
+            
+            // PDF signature
+            if header.starts(with: "%PDF".data(using: .ascii)!) {
+                print("GitService: Detected PDF file signature")
+                return true
+            }
+            
+            // NumPy .npy file signature
+            if header.starts(with: [0x93, 0x4E, 0x55, 0x4D, 0x50, 0x59]) {
+                print("GitService: Detected NumPy .npy file signature")
+                return true
+            }
+        }
+        
+        // If more than 30% null bytes or control characters, likely binary
+        let threshold = Double(sampleSize) * 0.3
+        let isBinary = Double(nullBytes) > threshold || Double(controlChars) > threshold
+        
+        if isBinary {
+            print("GitService: Binary detection - nullBytes: \(nullBytes), controlChars: \(controlChars), threshold: \(threshold)")
+        }
+        
+        return isBinary
     }
     
     private func extractReadme(from html: String) -> String? {

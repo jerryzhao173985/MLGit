@@ -12,31 +12,40 @@ struct CommitsView: View {
     
     var body: some View {
         List {
-            ForEach(viewModel.commits) { commit in
-                NavigationLink(destination: CommitDetailView(
-                    repositoryPath: repositoryPath,
-                    commitSHA: commit.sha
-                )) {
-                    CommitRowView(commit: commit)
+            if viewModel.isLoading && viewModel.commits.isEmpty {
+                CommitListSkeletonView()
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+            } else {
+                ForEach(viewModel.commits) { commit in
+                    NavigationLink(destination: CommitDetailView(
+                        repositoryPath: repositoryPath,
+                        commitSHA: commit.sha
+                    )) {
+                        CommitRowView(commit: commit)
+                    }
+                    .listRowHaptic()
                 }
-            }
-            
-            if viewModel.hasMore {
-                HStack {
-                    Spacer()
-                    if viewModel.isLoadingMore {
-                        ProgressView()
-                    } else {
-                        Button("Load More") {
-                            Task {
-                                await viewModel.loadMoreCommits()
+                .opacity(viewModel.isLoading ? 0.6 : 1.0)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+                
+                if viewModel.hasMore {
+                    HStack {
+                        Spacer()
+                        if viewModel.isLoadingMore {
+                            ProgressView()
+                        } else {
+                            Button("Load More") {
+                                Task {
+                                    await viewModel.loadMoreCommits()
+                                }
                             }
                         }
+                        Spacer()
                     }
-                    Spacer()
+                    .padding()
+                    .listRowSeparator(.hidden)
                 }
-                .padding()
-                .listRowSeparator(.hidden)
             }
         }
         .refreshable {

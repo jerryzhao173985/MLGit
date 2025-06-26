@@ -15,7 +15,7 @@ struct TestEnhancementsView: View {
                     }
                     
                     NavigationLink("Test Enhanced File View (README)") {
-                        EnhancedFileDetailView(
+                        SimpleFileView(
                             repositoryPath: "tosa/reference_model.git",
                             filePath: "README.md"
                         )
@@ -44,13 +44,17 @@ struct TestEnhancementsView: View {
                         .navigationTitle("Enhanced Markdown")
                     }
                     
-                    NavigationLink("Test Runestone Code View") {
-                        RunestoneCodeViewWrapper(
+                    NavigationLink("Test Smart Code View") {
+                        SmartCodeView(
                             content: sampleSwiftCode,
                             language: "swift",
-                            fileName: "SampleCode.swift"
+                            fontSize: 14,
+                            theme: "github",
+                            showLineNumbers: true,
+                            wrapLines: false,
+                            searchText: ""
                         )
-                        .navigationTitle("Runestone Code View")
+                        .navigationTitle("Smart Code View")
                     }
                     
                     NavigationLink("Test Theme System") {
@@ -79,6 +83,10 @@ struct TestEnhancementsView: View {
                 }
                 
                 Section("Debug Tools") {
+                    NavigationLink("Test File Loading") {
+                        TestFileLoadingView()
+                    }
+                    
                     NavigationLink("Debug File View (README)") {
                         DebugFileView(
                             repositoryPath: "tosa/reference_model.git",

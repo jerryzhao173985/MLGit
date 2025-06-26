@@ -13,32 +13,51 @@ struct CodeView: View {
     
     var body: some View {
         List {
-            if !currentPath.isEmpty {
-                Button(action: navigateUp) {
-                    HStack {
-                        Image(systemName: "arrow.up")
-                            .foregroundColor(.blue)
-                        Text("..")
-                            .foregroundColor(.blue)
-                        Spacer()
+            if viewModel.isLoading && viewModel.files.isEmpty {
+                FileListSkeletonView()
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+            } else {
+                if !currentPath.isEmpty {
+                    Button(action: navigateUp) {
+                        HStack {
+                            Image(systemName: "arrow.up")
+                                .foregroundColor(.blue)
+                            Text("..")
+                                .foregroundColor(.blue)
+                            Spacer()
+                        }
                     }
                 }
-            }
-            
-            ForEach(viewModel.files) { file in
-                if file.isDirectory {
-                    Button(action: { navigateToDirectory(file) }) {
+                
+                ForEach(viewModel.files) { file in
+                    if file.isDirectory {
                         FileRowView(file: file, showChevron: true)
-                    }
-                    .foregroundColor(.primary)
-                } else {
-                    NavigationLink(destination: EnhancedFileDetailView(
-                        repositoryPath: repositoryPath,
-                        filePath: currentPath.isEmpty ? file.path : currentPath.joined(separator: "/") + "/" + file.path
-                    )) {
-                        FileRowView(file: file, showChevron: false)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                print("CodeView: Tapped directory: \(file.name)")
+                                navigateToDirectory(file)
+                            }
+                    } else {
+                        NavigationLink(destination: OptimizedFileDetailView(
+                            repositoryPath: repositoryPath,
+                            filePath: currentPath.isEmpty ? file.path : currentPath.joined(separator: "/") + "/" + file.path
+                        )) {
+                            FileRowView(file: file, showChevron: false)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        .id(file.id) // Ensure unique navigation links
+                        .onAppear {
+                            if file.name.hasSuffix(".gitignore") || file.name.hasSuffix(".py") || file.name.hasSuffix(".sh") || file.name.hasSuffix(".bash") {
+                                print("CodeView: Showing file in list - name: \(file.name), path: \(file.path)")
+                            }
+                        }
                     }
                 }
+                .opacity(viewModel.isLoading ? 0.6 : 1.0)
+                .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
             }
         }
         .navigationTitle(currentPath.last ?? "Code")

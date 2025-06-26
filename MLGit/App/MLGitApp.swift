@@ -6,12 +6,14 @@ import Combine
 struct MLGitApp: App {
     @StateObject private var appState = AppState()
     @StateObject private var networkMonitor = NetworkMonitor.shared
+    @StateObject private var themeManager = ThemeManager.shared
     
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
                 .environmentObject(networkMonitor)
+                .environmentObject(themeManager)
                 .preferredColorScheme(appState.preferredColorScheme)
         }
     }
