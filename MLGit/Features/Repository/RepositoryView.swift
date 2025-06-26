@@ -82,7 +82,7 @@ struct RepositoryView: View {
                         case .about:
                             AboutView(repositoryPath: repositoryPath)
                         case .code:
-                            CodeView(repositoryPath: repositoryPath)
+                            EnhancedDirectoryView(repositoryPath: repositoryPath)
                         case .commits:
                             CommitsView(repositoryPath: repositoryPath)
                         case .branches:

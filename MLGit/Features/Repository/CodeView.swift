@@ -19,7 +19,10 @@ struct CodeView: View {
                     .listRowInsets(EdgeInsets())
             } else {
                 if !currentPath.isEmpty {
-                    Button(action: navigateUp) {
+                    Button(action: {
+                        HapticManager.shared.lightImpact()
+                        navigateUp()
+                    }) {
                         HStack {
                             Image(systemName: "arrow.up")
                                 .foregroundColor(.blue)
@@ -27,18 +30,23 @@ struct CodeView: View {
                                 .foregroundColor(.blue)
                             Spacer()
                         }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 
                 ForEach(viewModel.files) { file in
                     if file.isDirectory {
-                        FileRowView(file: file, showChevron: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                print("CodeView: Tapped directory: \(file.name)")
-                                navigateToDirectory(file)
-                            }
+                        Button(action: {
+                            print("CodeView: Tapped directory: \(file.name)")
+                            HapticManager.shared.lightImpact()
+                            navigateToDirectory(file)
+                        }) {
+                            FileRowView(file: file, showChevron: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
                     } else {
                         NavigationLink(destination: OptimizedFileDetailView(
                             repositoryPath: repositoryPath,

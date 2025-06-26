@@ -33,7 +33,7 @@ enum CachePolicy {
             
         case .treeStructure:
             // Directory structure changes infrequently
-            return 6 * 60 * 60 // 6 hours
+            return 24 * 60 * 60 // 24 hours
             
         case .refs:
             // Branches and tags update occasionally
